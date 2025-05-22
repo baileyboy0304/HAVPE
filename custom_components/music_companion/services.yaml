@@ -1,5 +1,5 @@
 fetch_audio_tag:
-  description: "Recognize audio from a Home Assistant Assist PE Satellite (UDP stream) and tag it."
+  description: "Recognize audio from a Home Assistant Assist PE Satellite and tag it."
   fields:
     duration:
       description: "Recording duration in seconds."
@@ -22,13 +22,13 @@ fetch_audio_tag:
       default: true
       selector:
         boolean:
-    tagging_switch_entity_id:
-      description: "Switch entity to control during audio recording (e.g., recording indicator light)"
-      example: "switch.audio_recording_indicator"
-      required: true
+    assist_satellite_entity:
+      description: "Assist satellite entity to use for audio tagging (optional - will auto-detect if not provided)"
+      example: "assist_satellite.home_assistant_voice_093d58_assist_satellite"
+      required: false
       selector:
         entity:
-          domain: switch
+          domain: assist_satellite
 
 fetch_lyrics:
   description: "Fetch synchronized lyrics for the currently playing track."
