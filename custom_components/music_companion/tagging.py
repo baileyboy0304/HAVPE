@@ -207,10 +207,6 @@ class TaggingService:
         """Recognize audio file using ACRCloud."""
         return await asyncio.to_thread(self.recognizer.recognize_by_file, filename, 0, CHUNK_DURATION)
 
-    def _set_state_in_loop(self, entity_id, state):
-        """Set state in the Home Assistant event loop."""
-        self.hass.states.async_set(entity_id, state)
-
     async def process_audio_chunk(self, chunk_buffer, chunk_index):
         """Process a single audio chunk."""
         # Convert buffer to WAV file
@@ -254,31 +250,26 @@ class TaggingService:
             spotify_id = first_match["external_metadata"]["spotify"]["track"]["id"]
             _LOGGER.warning(f"Extracted Spotify ID: {spotify_id}")
 
-        # Use entry-specific sensor name
-        sensor_name = f"sensor.last_tagged_song_{self.entry_id}" if self.entry_id else "sensor.last_tagged_song"
-        
-        # Get device name for friendly display
+        # Get device info
         device_config = get_device_config(self.hass, self.entry_id)
         device_name = device_config.get("device_name", "Unknown Device") if device_config else "Unknown Device"
         
-        # Store track details for Spotify integration
-        self.hass.loop.call_soon_threadsafe(
-            lambda: self.hass.states.async_set(
-                sensor_name, 
-                f"{title} - {artist_name}",
-                {
-                    "title": title,
-                    "artist": artist_name,
-                    "play_offset": play_offset_ms,
-                    "spotify_id": spotify_id,
-                    "friendly_name": f"Last Tagged Song - {device_name}",
-                    "device_name": device_name,
-                    "entry_id": self.entry_id
-                }
-            )
-        )
+        # Fire event with the tagging result - automation can listen for this
+        self.hass.bus.async_fire("music_companion_tag_result", {
+            "title": title,
+            "artist": artist_name,
+            "play_offset_ms": play_offset_ms,
+            "spotify_id": spotify_id,
+            "device_name": device_name,
+            "entry_id": self.entry_id,
+            "tagging_switch": self.tagging_switch_entity_id,
+            "formatted_song": f"{title} - {artist_name}",
+            "success": True
+        })
+        
+        _LOGGER.info("Fired music_companion_tag_result event: %s - %s", title, artist_name)
 
-        # Prepare service call data
+        # Prepare service call data for Spotify
         service_data = {
             'title': title,
             'artist': artist_name
@@ -288,7 +279,7 @@ class TaggingService:
         if spotify_id:
             service_data['spotify_id'] = spotify_id
 
-        # Call add_to_spotify service if requested - USE DOMAIN CONSTANT
+        # Call add_to_spotify service if requested
         if add_to_spotify:
             _LOGGER.info(f"Adding to Spotify from device: {device_name}")
             await self.hass.services.async_call(
@@ -319,6 +310,23 @@ class TaggingService:
                 process_begin = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=FINETUNE_SYNC)
                 _LOGGER.info("Triggering lyrics lookup for: %s - %s (device: %s)", title, artist_name, device_name)
                 await trigger_lyrics_lookup(self.hass, title, artist_name, play_offset_ms, process_begin.isoformat(), self.entry_id)
+
+    async def handle_no_match(self):
+        """Handle case when no music is recognized."""
+        # Get device info
+        device_config = get_device_config(self.hass, self.entry_id)
+        device_name = device_config.get("device_name", "Unknown Device") if device_config else "Unknown Device"
+        
+        # Fire event for no match
+        self.hass.bus.async_fire("music_companion_tag_result", {
+            "success": False,
+            "message": "No music recognized",
+            "tagging_switch": self.tagging_switch_entity_id,
+            "entry_id": self.entry_id,
+            "device_name": device_name
+        })
+        
+        _LOGGER.info("Fired music_companion_tag_result event: No match")
 
     async def listen_for_audio(self, max_duration, include_lyrics, add_to_spotify):
         """Listen for UDP audio data in chunks until successful recognition or timeout."""
@@ -393,7 +401,7 @@ class TaggingService:
                 await self.handle_successful_match(successful_response, include_lyrics, add_to_spotify)
             else:
                 _LOGGER.info("No music recognized in any chunk.")
-                self.hass.loop.call_soon_threadsafe(self._set_state_in_loop, "sensor.tagging_result", "No match")
+                await self.handle_no_match()
                 
                 # Create a notification for no match
                 await self.hass.services.async_call(
@@ -419,6 +427,15 @@ class TaggingService:
                 )
             except Exception as switch_e:
                 _LOGGER.error(f"Failed to turn off tagging switch during error handling: {switch_e}")
+            
+            # Fire error event
+            self.hass.bus.async_fire("music_companion_tag_result", {
+                "success": False,
+                "message": f"Error occurred: {str(e)}",
+                "tagging_switch": self.tagging_switch_entity_id,
+                "entry_id": self.entry_id,
+                "error": True
+            })
             
             # Create a notification for the error
             await self.hass.services.async_call(

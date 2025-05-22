@@ -150,20 +150,8 @@ async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntr
         )
         return False
 
-    # Create sensor for last tagged song (one per device)
-    sensor_name = f"sensor.last_tagged_song_{config_entry.entry_id}"
-    hass.states.async_set(
-        sensor_name, 
-        "None", 
-        {
-            "title": "",
-            "artist": "",
-            "play_offset": 0,
-            "friendly_name": f"Last Tagged Song - {device_name}",
-            "device_name": device_name,
-            "device_id": config_entry.entry_id
-        }
-    )
+    # No sensor creation anymore - using events instead
+    _LOGGER.info("Device '%s' configured successfully (using event-based tagging)", device_name)
 
     # Autostart the fetch_lyrics service for this device
     async def autostart(event):
@@ -195,11 +183,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     else:
         device_name = config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
         _LOGGER.info("Unloading Music Companion device: %s", device_name)
-        
-        # Clean up the device sensor
-        sensor_name = f"sensor.last_tagged_song_{config_entry.entry_id}"
-        if hass.states.get(sensor_name):
-            hass.states.async_remove(sensor_name)
+        # No sensors to clean up anymore
     
     # Remove this entry's data
     if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
