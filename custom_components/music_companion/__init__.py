@@ -32,10 +32,8 @@ def get_master_config(hass: HomeAssistant):
         return None
     
     for entry_id, data in hass.data[DOMAIN].items():
-        # Check if data is dict-like (includes both dict and mappingproxy)
         if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_MASTER:
             return data
-    
     return None
 
 def get_device_configs(hass: HomeAssistant):
@@ -45,31 +43,13 @@ def get_device_configs(hass: HomeAssistant):
     
     devices = []
     for entry_id, data in hass.data[DOMAIN].items():
-        if isinstance(data, dict) and data.get("entry_type") == ENTRY_TYPE_DEVICE:
+        if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_DEVICE:
             devices.append((entry_id, data))
     return devices
 
 async def async_setup(hass: HomeAssistant, config) -> bool:
     """Set up the Music Companion integration from yaml configuration."""
-    if DOMAIN not in config:
-        return True
-
-    # Register the tagging and lyrics services
-    await async_setup_tagging_service(hass)
-    await async_setup_lyrics_service(hass)
-    
-    # Create sensor for last tagged song
-    hass.states.async_set(
-        "sensor.last_tagged_song", 
-        "None", 
-        {
-            "title": "",
-            "artist": "",
-            "play_offset": 0,
-            "friendly_name": "Last Tagged Song"
-        }
-    )
-    
+    # No YAML configuration support anymore - only config flow
     return True
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -89,12 +69,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the master configuration entry."""
-    _LOGGER.info("Setting up Music Companion Master Configuration")
-    _LOGGER.error("=== DEBUG: Setting up master entry ===")
-    _LOGGER.error("DEBUG: config_entry.entry_id: %s", config_entry.entry_id)
-    _LOGGER.error("DEBUG: config_entry.data: %s", config_entry.data)
-    _LOGGER.error("DEBUG: About to store in hass.data[DOMAIN][%s]", config_entry.entry_id)
-    
     _LOGGER.info("Setting up Music Companion Master Configuration")
 
     # Register the tagging and lyrics services (only once)

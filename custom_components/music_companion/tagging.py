@@ -35,12 +35,13 @@ SAMPLE_WIDTH = 2
 CHUNK_DURATION = 3  # Duration of each audio chunk in seconds
 MAX_TOTAL_DURATION = 12  # Maximum total recording time in seconds
 
-# Service Schema
+# Service Schema - Restored original functionality
 SERVICE_FETCH_AUDIO_TAG_SCHEMA = vol.Schema({
     vol.Optional("duration", default=MAX_TOTAL_DURATION): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
     vol.Optional("include_lyrics", default=True): vol.All(vol.Coerce(bool)),
     vol.Optional("add_to_spotify", default=True): vol.All(vol.Coerce(bool)),
-    vol.Optional("device_name"): cv.string,
+    vol.Optional("tagging_switch_entity_id"): cv.entity_id,  # Original parameter - your automation uses this
+    vol.Optional("assist_satellite_entity"): cv.entity_id,   # Alternative way to specify
 })
 
 def get_master_config(hass: HomeAssistant):
@@ -76,14 +77,6 @@ def get_device_configs(hass: HomeAssistant):
             devices.append((entry_id, data))
     return devices
 
-def get_device_config_by_name(hass: HomeAssistant, device_name):
-    """Get device configuration by device name."""
-    device_configs = get_device_configs(hass)
-    for entry_id, device_config in device_configs:
-        if device_config.get("device_name") == device_name:
-            return entry_id, device_config
-    return None, None
-
 def get_tagging_config(hass: HomeAssistant, entry_id=None):
     """Get combined configuration for tagging (master + device)."""
     master_config = get_master_config(hass)
@@ -102,6 +95,23 @@ def get_tagging_config(hass: HomeAssistant, entry_id=None):
     }
     
     return combined_config
+
+def infer_tagging_switch_from_assist_satellite(assist_satellite_entity):
+    """Infer tagging switch from assist satellite entity."""
+    if not assist_satellite_entity.startswith("assist_satellite.") or not assist_satellite_entity.endswith("_assist_satellite"):
+        return None
+    
+    # Extract base name: assist_satellite.home_assistant_voice_093d58_assist_satellite -> home_assistant_voice_093d58
+    base_name = assist_satellite_entity[17:-17]  # Remove prefix and suffix
+    return f"switch.{base_name}_tagging_enable"
+
+def find_device_config_by_switch(hass: HomeAssistant, tagging_switch_entity_id):
+    """Find device configuration that matches the tagging switch."""
+    device_configs = get_device_configs(hass)
+    for entry_id, device_config in device_configs:
+        if device_config.get("tagging_switch_entity") == tagging_switch_entity_id:
+            return entry_id, device_config
+    return None, None
 
 def clean_text(text):
     """Remove Chinese characters from the given text."""
@@ -430,36 +440,51 @@ class TaggingService:
 
 
 async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
-    """Handle the service call for fetching audio tags."""
+    """Handle the service call for fetching audio tags - restored original functionality."""
     try:
         duration = call.data.get("duration", MAX_TOTAL_DURATION)
         include_lyrics = call.data.get("include_lyrics", True)
         add_to_spotify = call.data.get("add_to_spotify", True)
-        device_name = call.data.get("device_name")
         
-        tagging_switch_entity_id = None
+        # Support multiple ways to specify the tagging switch
+        tagging_switch_entity_id = call.data.get("tagging_switch_entity_id")
+        assist_satellite_entity = call.data.get("assist_satellite_entity")
+        
         entry_id = None
         
-        if device_name:
-            # Find device config by name
-            entry_id, device_config = get_device_config_by_name(hass, device_name)
-            if not device_config:
-                error_msg = f"No device configuration found with name: {device_name}"
+        if tagging_switch_entity_id:
+            # Original method - direct switch specification (your automation uses this)
+            _LOGGER.info("Using directly specified tagging switch: %s", tagging_switch_entity_id)
+            
+            # Try to find matching device config for this switch
+            entry_id, device_config = find_device_config_by_switch(hass, tagging_switch_entity_id)
+            if device_config:
+                _LOGGER.info("Found matching device config: %s", device_config.get("device_name"))
+            
+        elif assist_satellite_entity:
+            # Alternative method - infer switch from assist satellite
+            tagging_switch_entity_id = infer_tagging_switch_from_assist_satellite(assist_satellite_entity)
+            if not tagging_switch_entity_id:
+                error_msg = f"Could not infer tagging switch from assist satellite: {assist_satellite_entity}"
                 _LOGGER.error(error_msg)
                 await create_error_notification(hass, error_msg)
                 return
-            tagging_switch_entity_id = device_config.get("tagging_switch_entity")
+            _LOGGER.info("Inferred tagging switch from assist satellite: %s -> %s", assist_satellite_entity, tagging_switch_entity_id)
+            
+            # Try to find matching device config
+            entry_id, device_config = find_device_config_by_switch(hass, tagging_switch_entity_id)
+            
         else:
-            # Auto-detect: use first available device
+            # Auto-detect: use first available device config
             device_configs = get_device_configs(hass)
             if device_configs:
                 entry_id = device_configs[0][0]
                 device_config = device_configs[0][1]
                 tagging_switch_entity_id = device_config.get("tagging_switch_entity")
                 auto_device_name = device_config.get("device_name", "Unknown Device")
-                _LOGGER.info("Auto-selected device: %s", auto_device_name)
+                _LOGGER.info("Auto-selected device: %s, switch: %s", auto_device_name, tagging_switch_entity_id)
             else:
-                error_msg = "No device configurations found. Please set up a device first."
+                error_msg = "No tagging switch specified and no device configurations found."
                 _LOGGER.error(error_msg)
                 await create_error_notification(hass, error_msg)
                 return
@@ -471,11 +496,12 @@ async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
             await create_error_notification(hass, error_msg)
             return
 
-        _LOGGER.info("Audio tagging service called - Duration: %s, Device: %s", duration, entry_id)
+        _LOGGER.info("Audio tagging service called - Duration: %s, Switch: %s, Entry: %s", 
+                    duration, tagging_switch_entity_id, entry_id)
         
         # Create and run tagging service
         tagging_service = TaggingService(hass, tagging_switch_entity_id, entry_id)
-        service_key = f"tagging_service_{entry_id}"
+        service_key = f"tagging_service_{entry_id or 'default'}"
         
         # Stop any existing service
         if service_key in hass.data:

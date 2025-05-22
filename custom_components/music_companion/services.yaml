@@ -22,12 +22,20 @@ fetch_audio_tag:
       default: true
       selector:
         boolean:
-    device_name:
-      description: "Name of the configured device to use (optional - will auto-select if not provided)"
-      example: "Voice"
+    tagging_switch_entity_id:
+      description: "Switch entity to control during audio recording (can be inferred from assist_satellite_entity)"
+      example: "switch.home_assistant_voice_093d58_tagging_enable"
       required: false
       selector:
-        text:
+        entity:
+          domain: switch
+    assist_satellite_entity:
+      description: "Assist satellite entity (alternative to tagging_switch_entity_id - will auto-infer the switch)"
+      example: "assist_satellite.home_assistant_voice_093d58_assist_satellite"
+      required: false
+      selector:
+        entity:
+          domain: assist_satellite
 
 fetch_lyrics:
   description: "Fetch synchronized lyrics for the currently playing track."
