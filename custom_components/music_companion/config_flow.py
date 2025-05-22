@@ -109,63 +109,63 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="master_config", data_schema=data_schema, errors=errors)
 
     async def async_step_device(self, user_input=None):
-    """Configure individual device."""
-    errors = {}
-    
-    self._check_master_config()
-    if not self._master_config_exists:
-        return self.async_abort(reason="master_required")
-    
-    if user_input is not None:
-        device_name = user_input[CONF_DEVICE_NAME]
-        assist_satellite = user_input[CONF_ASSIST_SATELLITE_ENTITY]
+        """Configure individual device."""
+        errors = {}
         
-        # Check for duplicate device names
-        for entry in self._async_current_entries():
-            if (entry.data.get("entry_type") == ENTRY_TYPE_DEVICE and 
-                entry.data.get(CONF_DEVICE_NAME) == device_name):
-                errors[CONF_DEVICE_NAME] = "name_exists"
-                break
+        self._check_master_config()
+        if not self._master_config_exists:
+            return self.async_abort(reason="master_required")
         
-        if not errors:
-            # Infer entities from assist satellite
-            entity_info = infer_entities_from_assist_satellite(self.hass, assist_satellite)
+        if user_input is not None:
+            device_name = user_input[CONF_DEVICE_NAME]
+            assist_satellite = user_input[CONF_ASSIST_SATELLITE_ENTITY]
             
-            if not entity_info["exists"]:
-                if not entity_info["switch_exists"]:
-                    errors[CONF_ASSIST_SATELLITE_ENTITY] = "tagging_switch_not_found"
-                if not entity_info["media_player_exists"]:
-                    errors[CONF_ASSIST_SATELLITE_ENTITY] = "media_player_not_found"
-            else:
-                # Override media player if provided
-                media_player = user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE) or entity_info["media_player"]
+            # Check for duplicate device names
+            for entry in self._async_current_entries():
+                if (entry.data.get("entry_type") == ENTRY_TYPE_DEVICE and 
+                    entry.data.get(CONF_DEVICE_NAME) == device_name):
+                    errors[CONF_DEVICE_NAME] = "name_exists"
+                    break
+            
+            if not errors:
+                # Infer entities from assist satellite
+                entity_info = infer_entities_from_assist_satellite(self.hass, assist_satellite)
                 
-                # Validate override if provided
-                if user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE):
-                    if not self.hass.states.get(media_player):
-                        errors[CONF_MEDIA_PLAYER_ENTITY_OVERRIDE] = "media_player_not_found"
-                
-                if not errors:
-                    data = {
-                        "device_name": device_name,
-                        "assist_satellite_entity": assist_satellite,
-                        "base_name": entity_info["base_name"],
-                        "tagging_switch_entity": entity_info["tagging_switch"],
-                        "media_player_entity": media_player,
-                        "entry_type": ENTRY_TYPE_DEVICE,
-                    }
-                    return self.async_create_entry(title=device_name, data=data)
+                if not entity_info["exists"]:
+                    if not entity_info["switch_exists"]:
+                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "tagging_switch_not_found"
+                    if not entity_info["media_player_exists"]:
+                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "media_player_not_found"
+                else:
+                    # Override media player if provided
+                    media_player = user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE) or entity_info["media_player"]
+                    
+                    # Validate override if provided
+                    if user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE):
+                        if not self.hass.states.get(media_player):
+                            errors[CONF_MEDIA_PLAYER_ENTITY_OVERRIDE] = "media_player_not_found"
+                    
+                    if not errors:
+                        data = {
+                            "device_name": device_name,
+                            "assist_satellite_entity": assist_satellite,
+                            "base_name": entity_info["base_name"],
+                            "tagging_switch_entity": entity_info["tagging_switch"],
+                            "media_player_entity": media_player,
+                            "entry_type": ENTRY_TYPE_DEVICE,
+                        }
+                        return self.async_create_entry(title=device_name, data=data)
 
-    # Get available assist satellites
-    assist_satellites = []
-    for state in self.hass.states.async_all():
-        if state.entity_id.startswith("assist_satellite."):
-            assist_satellites.append(state.entity_id)
+        # Get available assist satellites
+        assist_satellites = []
+        for state in self.hass.states.async_all():
+            if state.entity_id.startswith("assist_satellite."):
+                assist_satellites.append(state.entity_id)
 
-    data_schema = vol.Schema({
-        vol.Required(CONF_DEVICE_NAME): cv.string,
-        vol.Required(CONF_ASSIST_SATELLITE_ENTITY): vol.In(assist_satellites),
-        vol.Optional(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE, description="Override auto-detected media player"): cv.string,
-    })
+        data_schema = vol.Schema({
+            vol.Required(CONF_DEVICE_NAME): cv.string,
+            vol.Required(CONF_ASSIST_SATELLITE_ENTITY): vol.In(assist_satellites),
+            vol.Optional(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE, description="Override auto-detected media player"): cv.string,
+        })
 
-    return self.async_show_form(step_id="device", data_schema=data_schema, errors=errors)
+        return self.async_show_form(step_id="device", data_schema=data_schema, errors=errors)
