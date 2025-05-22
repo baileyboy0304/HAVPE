@@ -253,6 +253,15 @@ class TaggingService:
         # Get device info
         device_config = get_device_config(self.hass, self.entry_id)
         device_name = device_config.get("device_name", "Unknown Device") if device_config else "Unknown Device"
+
+        # Add this debug logging right before the hass.bus.async_fire call:
+        _LOGGER.error("DEBUG: About to fire event with tagging_switch: '%s'", self.tagging_switch_entity_id)
+        _LOGGER.error("DEBUG: Event data will be: %s", {
+            "title": title,
+            "artist": artist_name,
+            "tagging_switch": self.tagging_switch_entity_id,
+            "success": True
+        })
         
         # Fire event with the tagging result - automation can listen for this
         self.hass.bus.async_fire("music_companion_tag_result", {
