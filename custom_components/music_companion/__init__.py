@@ -49,12 +49,29 @@ CONFIG_SCHEMA = vol.Schema(
 
 def get_master_config(hass: HomeAssistant):
     """Get the master configuration entry."""
+    _LOGGER.error("=== DEBUG: get_master_config called ===")
+    
     if DOMAIN not in hass.data:
+        _LOGGER.error("DEBUG: DOMAIN not in hass.data")
+        _LOGGER.error("DEBUG: Available domains in hass.data: %s", list(hass.data.keys()))
         return None
     
+    _LOGGER.error("DEBUG: hass.data[DOMAIN] keys: %s", list(hass.data[DOMAIN].keys()))
+    _LOGGER.error("DEBUG: hass.data[DOMAIN] content: %s", hass.data[DOMAIN])
+    
     for entry_id, data in hass.data[DOMAIN].items():
-        if isinstance(data, dict) and data.get("entry_type") == ENTRY_TYPE_MASTER:
-            return data
+        _LOGGER.error("DEBUG: Checking entry_id: %s, data type: %s", entry_id, type(data))
+        if isinstance(data, dict):
+            _LOGGER.error("DEBUG: Entry data keys: %s", list(data.keys()))
+            _LOGGER.error("DEBUG: Entry type: %s", data.get("entry_type"))
+            if data.get("entry_type") == ENTRY_TYPE_MASTER:
+                _LOGGER.error("DEBUG: Found master config!")
+                return data
+        else:
+            _LOGGER.error("DEBUG: Data is not a dict: %s", data)
+    
+    _LOGGER.error("DEBUG: No master config found")
+    _LOGGER.error("DEBUG: ENTRY_TYPE_MASTER constant: %s", ENTRY_TYPE_MASTER)
     return None
 
 def get_device_configs(hass: HomeAssistant):
@@ -112,6 +129,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the master configuration entry."""
+    _LOGGER.info("Setting up Music Companion Master Configuration")
+     _LOGGER.error("=== DEBUG: Setting up master entry ===")
+    _LOGGER.error("DEBUG: config_entry.entry_id: %s", config_entry.entry_id)
+    _LOGGER.error("DEBUG: config_entry.data: %s", config_entry.data)
+    _LOGGER.error("DEBUG: About to store in hass.data[DOMAIN][%s]", config_entry.entry_id)
+    
     _LOGGER.info("Setting up Music Companion Master Configuration")
 
     # Register the tagging and lyrics services (only once)
