@@ -9,11 +9,11 @@ from .spotify import async_setup_spotify_service
 from .const import (
     DOMAIN,
     CONF_MASTER_CONFIG,
-    CONF_MEDIA_PLAYER,
-    CONF_ACCESS_KEY,
-    CONF_ACCESS_SECRET,
-    CONF_PORT,
-    CONF_HOST,
+    CONF_MEDIA_PLAYER_ENTITY,
+    CONF_ACRCLOUD_ACCESS_KEY,
+    CONF_ACRCLOUD_ACCESS_SECRET,
+    CONF_HOME_ASSISTANT_UDP_PORT,
+    CONF_ACRCLOUD_HOST,
     CONF_DEVICE_NAME,
     CONF_SPOTIFY_CLIENT_ID,
     CONF_SPOTIFY_CLIENT_SECRET,
@@ -21,7 +21,13 @@ from .const import (
     CONF_SPOTIFY_CREATE_PLAYLIST,
     CONF_SPOTIFY_PLAYLIST_NAME,
     ENTRY_TYPE_MASTER,
-    ENTRY_TYPE_DEVICE
+    ENTRY_TYPE_DEVICE,
+    # Legacy constants for backward compatibility
+    CONF_MEDIA_PLAYER,
+    CONF_PORT,
+    CONF_HOST,
+    CONF_ACCESS_KEY,
+    CONF_ACCESS_SECRET
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,7 +69,7 @@ def get_device_configs(hass: HomeAssistant):
     return devices
 
 async def async_setup(hass: HomeAssistant, config) -> bool:
-    """Set up the Tagging and Lyrics integration from yaml configuration."""
+    """Set up the Music Companion integration from yaml configuration."""
     if DOMAIN not in config:
         return True
 
@@ -90,7 +96,7 @@ async def async_setup(hass: HomeAssistant, config) -> bool:
     return True
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Set up the Tagging and Lyrics integration from a config entry."""
+    """Set up the Music Companion integration from a config entry."""
     entry_type = config_entry.data.get("entry_type", ENTRY_TYPE_DEVICE)
     
     # Initialize the domain data structure if it doesn't exist
@@ -106,7 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the master configuration entry."""
-    _LOGGER.info("Setting up Tagging and Lyrics Master Configuration")
+    _LOGGER.info("Setting up Music Companion Master Configuration")
 
     # Register the tagging and lyrics services (only once)
     if not hass.data[DOMAIN].get('_services_registered'):
@@ -163,14 +169,14 @@ async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntr
         )
 
     # Ensure logging level is set to debug for troubleshooting
-    logging.getLogger("custom_components.tagging_and_lyrics").setLevel(logging.DEBUG)
+    logging.getLogger(f"custom_components.{DOMAIN}").setLevel(logging.DEBUG)
 
     return True
 
 async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up a device entry."""
-    device_name = config_entry.data.get(CONF_DEVICE_NAME, "Tagging and Lyrics Device")
-    _LOGGER.info("Setting up Tagging and Lyrics device: %s", device_name)
+    device_name = config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
+    _LOGGER.info("Setting up Music Companion device: %s", device_name)
 
     # Check if master configuration exists
     master_config = get_master_config(hass)
@@ -206,9 +212,9 @@ async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntr
     async def autostart(event):
         _LOGGER.debug("Autostarting fetch_lyrics service for device: %s", device_name)
         try:
-            entity_id = config_entry.data[CONF_MEDIA_PLAYER]
+            entity_id = config_entry.data[CONF_MEDIA_PLAYER_ENTITY]
             await hass.services.async_call(
-                "tagging_and_lyrics",
+                DOMAIN,
                 "fetch_lyrics",
                 {"entity_id": entity_id}
             )
@@ -227,11 +233,11 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     entry_type = config_entry.data.get("entry_type", ENTRY_TYPE_DEVICE)
     
     if entry_type == ENTRY_TYPE_MASTER:
-        _LOGGER.info("Unloading Tagging and Lyrics Master Configuration")
+        _LOGGER.info("Unloading Music Companion Master Configuration")
         # Don't remove shared services as devices might still need them
     else:
-        device_name = config_entry.data.get(CONF_DEVICE_NAME, "Tagging and Lyrics Device")
-        _LOGGER.info("Unloading Tagging and Lyrics device: %s", device_name)
+        device_name = config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
+        _LOGGER.info("Unloading Music Companion device: %s", device_name)
         
         # Clean up the device sensor
         sensor_name = f"sensor.last_tagged_song_{config_entry.entry_id}"

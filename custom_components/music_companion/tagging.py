@@ -35,7 +35,7 @@ SAMPLE_WIDTH = 2
 CHUNK_DURATION = 3  # Duration of each audio chunk in seconds
 MAX_TOTAL_DURATION = 12  # Maximum total recording time in seconds
 
-# Service Schema - NOW PROPERLY PLACED AFTER IMPORTS
+# Service Schema
 SERVICE_FETCH_AUDIO_TAG_SCHEMA = vol.Schema({
     vol.Optional("duration", default=MAX_TOTAL_DURATION): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
     vol.Optional("include_lyrics", default=True): vol.All(vol.Coerce(bool)),
@@ -82,13 +82,13 @@ def get_tagging_config(hass: HomeAssistant, entry_id=None):
     
     device_config = get_device_config(hass, entry_id) if entry_id else {}
     
-    # Combine master and device config
+    # Map new field names to old ones for backward compatibility
     combined_config = {
-        "host": master_config.get("host"),
-        "port": master_config.get("port", 6056),
-        "access_key": master_config.get("access_key"),
-        "access_secret": master_config.get("access_secret"),
-        "media_player": device_config.get("media_player") if device_config else None
+        "host": master_config.get("acrcloud_host"),
+        "port": master_config.get("home_assistant_udp_port", 6056),
+        "access_key": master_config.get("acrcloud_access_key"),
+        "access_secret": master_config.get("acrcloud_access_secret"),
+        "media_player": device_config.get("media_player_entity") if device_config else None
     }
     
     return combined_config
@@ -268,11 +268,11 @@ class TaggingService:
         if spotify_id:
             service_data['spotify_id'] = spotify_id
 
-        # Call add_to_spotify service if requested
+        # Call add_to_spotify service if requested - USE DOMAIN CONSTANT
         if add_to_spotify:
             _LOGGER.info(f"Adding to Spotify from device: {device_name}")
             await self.hass.services.async_call(
-                'tagging_and_lyrics', 
+                DOMAIN,
                 'add_to_spotify', 
                 service_data
             )
@@ -527,7 +527,7 @@ async def async_setup_tagging_service(hass: HomeAssistant):
         await handle_fetch_audio_tag(hass, call)
 
     hass.services.async_register(
-        "tagging_and_lyrics",
+        DOMAIN,
         "fetch_audio_tag",
         async_wrapper,
         schema=SERVICE_FETCH_AUDIO_TAG_SCHEMA

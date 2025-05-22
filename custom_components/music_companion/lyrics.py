@@ -620,17 +620,23 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
     await ACTIVE_LYRICS_SYNC.start(entity_id, timeline, lrc, pos, updated_at, audiofingerprint)
 
 
-async def trigger_lyrics_lookup(hass: HomeAssistant, title: str, artist: str, play_offset_ms: int, process_begin: str):
+async def trigger_lyrics_lookup(hass: HomeAssistant, title: str, artist: str, play_offset_ms: int, process_begin: str, entry_id=None):
     """Trigger lyrics lookup based on a recognized song."""
 
     if not title or not artist:
         _LOGGER.warning("Trigger Lyrics: Cannot trigger lyrics lookup: Missing title or artist.")
         return
 
-    _LOGGER.info("Trigger Lyrics (from tagging) -> Artist: %s Title: %s", artist, title)
+    _LOGGER.info("Trigger Lyrics (from tagging) -> Artist: %s Title: %s, Entry ID: %s", artist, title, entry_id)
 
     # Get the configured media player entity ID
-    media_player = hass.data["tagging_and_lyrics"]["media_player"]
+    from .tagging import get_tagging_config
+    conf = get_tagging_config(hass, entry_id)
+    if not conf:
+        _LOGGER.error("No configuration found for entry_id: %s", entry_id)
+        return
+        
+    media_player = conf["media_player"]
 
     clean_track = clean_track_name(title)
     await fetch_lyrics_for_track(hass, clean_track, artist, play_offset_ms/1000, process_begin, media_player, True)
@@ -725,7 +731,7 @@ async def async_setup_lyrics_service(hass: HomeAssistant):
         await handle_fetch_lyrics(hass, call)
 
     hass.services.async_register(
-        "tagging_and_lyrics",
+        DOMAIN,  # Use DOMAIN constant instead of hardcoded string
         "fetch_lyrics",
         async_wrapper,
         schema=SERVICE_FETCH_LYRICS_SCHEMA

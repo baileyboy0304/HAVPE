@@ -39,7 +39,7 @@ SERVICE_ADD_TO_SPOTIFY_SCHEMA = vol.Schema({
 class SpotifyAuthView(HomeAssistantView):
     """Handle Spotify authentication callbacks."""
     url = SPOTIFY_AUTH_CALLBACK_PATH
-    name = "api:tagging_and_lyrics:spotify_callback"
+    name = f"api:{DOMAIN}:spotify_callback"
     requires_auth = False
 
     def __init__(self, hass):
@@ -203,7 +203,7 @@ class SpotifyService:
     async def exchange_code(self, code):
         """Exchange authorization code for tokens."""
         # Hardcoded redirect URI to match the one used in authorization
-        redirect_uri = 'http://homeassistant.local:8123/api/tagging_and_lyrics/spotify_callback'
+        redirect_uri = f'http://homeassistant.local:8123{SPOTIFY_AUTH_CALLBACK_PATH}'
         
         payload = {
             "grant_type": "authorization_code",
