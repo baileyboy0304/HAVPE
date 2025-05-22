@@ -22,12 +22,6 @@ from .const import (
     CONF_SPOTIFY_PLAYLIST_NAME,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
-    # Legacy constants for backward compatibility
-    CONF_MEDIA_PLAYER,
-    CONF_PORT,
-    CONF_HOST,
-    CONF_ACCESS_KEY,
-    CONF_ACCESS_SECRET
 )
 
 _LOGGER = logging.getLogger(__name__)
