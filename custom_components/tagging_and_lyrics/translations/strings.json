@@ -9,46 +9,46 @@
         "title": "Setup Type",
         "description": "Choose what you want to set up",
         "menu_options": {
-          "master": "Master Configuration (ACRCloud & Spotify)",
+          "master": "Master Configuration (API Credentials)",
           "device": "Add Device"
         }
       },
       "master_config": {
         "title": "Master Configuration",
-        "description": "Configure ACRCloud and Spotify credentials (shared by all devices)",
+        "description": "🔑 **Setup API Credentials**\n\n**ACRCloud** - For music recognition\n**Spotify** - For playlist management\n**Home Assistant** - For audio streaming\n\nThese credentials will be shared by all your devices.",
         "data": {
-          "host": "ACRCloud Host",
-          "port": "UDP Port",
-          "access_key": "ACRCloud Access Key",
-          "access_secret": "ACRCloud Access Secret",
-          "spotify_client_id": "Spotify Client ID",
-          "spotify_client_secret": "Spotify Client Secret",
-          "spotify_playlist_id": "Spotify Playlist ID (Optional)",
-          "spotify_create_playlist": "Create Playlist Automatically",
-          "spotify_playlist_name": "Playlist Name"
+          "host": "🎵 ACRCloud Host Server",
+          "port": "🏠 Home Assistant UDP Port",
+          "access_key": "🔑 ACRCloud Access Key",
+          "access_secret": "🔒 ACRCloud Access Secret",
+          "spotify_client_id": "🎧 Spotify Client ID",
+          "spotify_client_secret": "🔐 Spotify Client Secret",
+          "spotify_playlist_id": "📋 Spotify Playlist ID (Optional)",
+          "spotify_create_playlist": "✨ Auto-create Playlist",
+          "spotify_playlist_name": "📋 Playlist Name"
         },
         "data_description": {
-          "host": "ACRCloud recognition service host (e.g., 'identify-us-west-2.acrcloud.com')",
-          "port": "UDP port number for receiving audio data (default: 6056)",
-          "access_key": "Your ACRCloud access key from your ACRCloud console",
-          "access_secret": "Your ACRCloud access secret from your ACRCloud console",
-          "spotify_client_id": "Your Spotify application client ID",
-          "spotify_client_secret": "Your Spotify application client secret",
-          "spotify_playlist_id": "Existing Spotify playlist ID (leave empty to create new)",
-          "spotify_create_playlist": "Automatically create a new playlist if one doesn't exist",
-          "spotify_playlist_name": "Name for the playlist where discovered tracks will be added"
+          "host": "**ACRCloud Service:** Your ACRCloud host server (e.g., 'identify-us-west-2.acrcloud.com')",
+          "port": "**Home Assistant:** UDP port for receiving audio data from your devices (default: 6056)",
+          "access_key": "**ACRCloud Service:** Your access key from the ACRCloud console",
+          "access_secret": "**ACRCloud Service:** Your access secret from the ACRCloud console",
+          "spotify_client_id": "**Spotify Service:** Your app's client ID from Spotify Developer Dashboard",
+          "spotify_client_secret": "**Spotify Service:** Your app's client secret from Spotify Developer Dashboard",
+          "spotify_playlist_id": "**Spotify Service:** ID of existing playlist (leave empty to create new)",
+          "spotify_create_playlist": "**Spotify Service:** Automatically create a playlist if none exists",
+          "spotify_playlist_name": "**Spotify Service:** Name for the playlist where discovered tracks are saved"
         }
       },
       "device": {
-        "title": "Add Device",
-        "description": "Add a new music companion device",
+        "title": "Add Music Device",
+        "description": "Add a device that will use the shared credentials for music recognition and lyrics sync.",
         "data": {
-          "device_name": "Device Name",
-          "media_player": "Media Player Entity"
+          "device_name": "📱 Device Name",
+          "media_player": "🔊 Media Player Entity"
         },
         "data_description": {
-          "device_name": "A friendly name for this device (e.g., 'Living Room', 'Kitchen Speaker', 'Bedroom TV')",
-          "media_player": "The media player entity ID to monitor for lyrics synchronization"
+          "device_name": "**Device:** A friendly name (e.g., 'Living Room', 'Kitchen Speaker', 'Bedroom TV')",
+          "media_player": "**Home Assistant:** The media player entity to monitor for lyrics synchronization"
         }
       }
     },
@@ -69,25 +69,25 @@
       },
       "master_options": {
         "title": "Update Master Configuration",
-        "description": "Update ACRCloud and Spotify settings",
+        "description": "Update your API credentials for ACRCloud and Spotify services",
         "data": {
-          "host": "ACRCloud Host",
-          "port": "UDP Port", 
-          "access_key": "ACRCloud Access Key",
-          "access_secret": "ACRCloud Access Secret",
-          "spotify_client_id": "Spotify Client ID",
-          "spotify_client_secret": "Spotify Client Secret",
-          "spotify_playlist_id": "Spotify Playlist ID (Optional)",
-          "spotify_create_playlist": "Create Playlist Automatically",
-          "spotify_playlist_name": "Playlist Name"
+          "host": "🎵 ACRCloud Host Server",
+          "port": "🏠 Home Assistant UDP Port",
+          "access_key": "🔑 ACRCloud Access Key",
+          "access_secret": "🔒 ACRCloud Access Secret",
+          "spotify_client_id": "🎧 Spotify Client ID",
+          "spotify_client_secret": "🔐 Spotify Client Secret",
+          "spotify_playlist_id": "📋 Spotify Playlist ID (Optional)",
+          "spotify_create_playlist": "✨ Auto-create Playlist",
+          "spotify_playlist_name": "📋 Playlist Name"
         }
       },
       "device_options": {
         "title": "Update Device Configuration",
-        "description": "Update device settings",
+        "description": "Update your device settings",
         "data": {
-          "device_name": "Device Name",
-          "media_player": "Media Player Entity"
+          "device_name": "📱 Device Name",
+          "media_player": "🔊 Media Player Entity"
         }
       }
     }
