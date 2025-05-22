@@ -14,7 +14,8 @@ from .const import (
     CONF_SPOTIFY_CREATE_PLAYLIST,
     CONF_SPOTIFY_PLAYLIST_NAME,
     CONF_DEVICE_NAME,
-    CONF_MEDIA_PLAYER_ENTITY,
+    CONF_ASSIST_SATELLITE_ENTITY,        
+    CONF_MEDIA_PLAYER_ENTITY_OVERRIDE,   
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
     DEFAULT_SPOTIFY_PLAYLIST_NAME
@@ -169,3 +170,35 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         return self.async_show_form(step_id="device", data_schema=data_schema, errors=errors)
+    
+    def infer_entities_from_assist_satellite(hass, assist_satellite_entity):
+        """Infer related entities from assist satellite entity ID."""
+        if not assist_satellite_entity.startswith("assist_satellite.") or not assist_satellite_entity.endswith("_assist_satellite"):
+            return {"exists": False, "error": "Invalid assist satellite entity format"}
+        
+        # Extract base name
+        base_name = assist_satellite_entity[17:-17]  # Remove "assist_satellite." and "_assist_satellite"
+        
+        # Infer entity IDs
+        tagging_switch = f"switch.{base_name}_tagging_enable"
+        media_player_primary = f"media_player.{base_name}_media_player_2"
+        media_player_alt = f"media_player.{base_name}_media_player"
+        
+        # Check which entities exist
+        switch_exists = hass.states.get(tagging_switch) is not None
+        media_player_exists = hass.states.get(media_player_primary) is not None
+        
+        # Try alternative media player naming if primary doesn't exist
+        if not media_player_exists:
+            media_player_exists = hass.states.get(media_player_alt) is not None
+            if media_player_exists:
+                media_player_primary = media_player_alt
+        
+        return {
+            "base_name": base_name,
+            "tagging_switch": tagging_switch,
+            "media_player": media_player_primary,
+            "switch_exists": switch_exists,
+            "media_player_exists": media_player_exists,
+            "exists": switch_exists and media_player_exists
+        }
