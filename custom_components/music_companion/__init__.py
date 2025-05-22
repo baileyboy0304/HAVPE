@@ -130,7 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the master configuration entry."""
     _LOGGER.info("Setting up Music Companion Master Configuration")
-     _LOGGER.error("=== DEBUG: Setting up master entry ===")
+    _LOGGER.error("=== DEBUG: Setting up master entry ===")
     _LOGGER.error("DEBUG: config_entry.entry_id: %s", config_entry.entry_id)
     _LOGGER.error("DEBUG: config_entry.data: %s", config_entry.data)
     _LOGGER.error("DEBUG: About to store in hass.data[DOMAIN][%s]", config_entry.entry_id)
