@@ -14,8 +14,8 @@
         }
       },
       "master_config": {
-        "title": "Master Configuration",
-        "description": "🔑 **Setup API Credentials**\n\n**ACRCloud** - For music recognition\n**Spotify** - For playlist management\n**Home Assistant** - For audio streaming\n\nThese credentials will be shared by all your devices.",
+        "title": "🔑 Master Configuration",
+        "description": "Configure your service credentials:\n\n• **ACRCloud** - For music recognition\n• **Spotify** - For playlist management\n• **Home Assistant** - For audio streaming\n\nThese will be shared by all devices.",
         "data": {
           "host": "🎵 ACRCloud Host Server",
           "port": "🏠 Home Assistant UDP Port",
@@ -28,38 +28,38 @@
           "spotify_playlist_name": "📋 Playlist Name"
         },
         "data_description": {
-          "host": "**ACRCloud Service:** Your ACRCloud host server (e.g., 'identify-us-west-2.acrcloud.com')",
-          "port": "**Home Assistant:** UDP port for receiving audio data from your devices (default: 6056)",
-          "access_key": "**ACRCloud Service:** Your access key from the ACRCloud console",
-          "access_secret": "**ACRCloud Service:** Your access secret from the ACRCloud console",
-          "spotify_client_id": "**Spotify Service:** Your app's client ID from Spotify Developer Dashboard",
-          "spotify_client_secret": "**Spotify Service:** Your app's client secret from Spotify Developer Dashboard",
-          "spotify_playlist_id": "**Spotify Service:** ID of existing playlist (leave empty to create new)",
-          "spotify_create_playlist": "**Spotify Service:** Automatically create a playlist if none exists",
-          "spotify_playlist_name": "**Spotify Service:** Name for the playlist where discovered tracks are saved"
+          "host": "ACRCloud service host (e.g., 'identify-us-west-2.acrcloud.com')",
+          "port": "UDP port for receiving audio data (default: 6056)",
+          "access_key": "Your ACRCloud access key from ACRCloud console",
+          "access_secret": "Your ACRCloud access secret from ACRCloud console",
+          "spotify_client_id": "Your Spotify app client ID from Developer Dashboard",
+          "spotify_client_secret": "Your Spotify app client secret from Developer Dashboard",
+          "spotify_playlist_id": "Existing playlist ID (leave empty to create new)",
+          "spotify_create_playlist": "Automatically create playlist if none exists",
+          "spotify_playlist_name": "Name for playlist where discovered tracks are saved"
         }
       },
       "device": {
         "title": "Add Music Device",
-        "description": "Add a device that will use the shared credentials for music recognition and lyrics sync.",
+        "description": "Add a device for music recognition and lyrics sync",
         "data": {
           "device_name": "📱 Device Name",
           "media_player": "🔊 Media Player Entity"
         },
         "data_description": {
-          "device_name": "**Device:** A friendly name (e.g., 'Living Room', 'Kitchen Speaker', 'Bedroom TV')",
-          "media_player": "**Home Assistant:** The media player entity to monitor for lyrics synchronization"
+          "device_name": "Friendly name (e.g., 'Living Room', 'Kitchen')",
+          "media_player": "Home Assistant media player entity for lyrics sync"
         }
       }
     },
     "error": {
-      "name_exists": "A device with this name already exists. Please choose a different name.",
-      "master_exists": "Master configuration already exists. Use the update option instead.",
-      "master_required": "Master configuration is required before adding devices."
+      "name_exists": "A device with this name already exists. Choose a different name.",
+      "master_exists": "Master configuration already exists. Use update option.",
+      "master_required": "Master configuration required before adding devices."
     },
     "abort": {
-      "master_updated": "Master configuration has been updated successfully.",
-      "master_required": "Please set up the Master Configuration first before adding devices."
+      "master_updated": "Master configuration updated successfully.",
+      "master_required": "Please set up Master Configuration first."
     }
   },
   "options": {
@@ -68,8 +68,8 @@
         "title": "Update Configuration"
       },
       "master_options": {
-        "title": "Update Master Configuration",
-        "description": "Update your API credentials for ACRCloud and Spotify services",
+        "title": "🔑 Update Master Configuration",
+        "description": "Update your API credentials",
         "data": {
           "host": "🎵 ACRCloud Host Server",
           "port": "🏠 Home Assistant UDP Port",
@@ -83,19 +83,12 @@
         }
       },
       "device_options": {
-        "title": "Update Device Configuration",
-        "description": "Update your device settings",
+        "title": "Update Device",
+        "description": "Update device settings",
         "data": {
           "device_name": "📱 Device Name",
           "media_player": "🔊 Media Player Entity"
         }
-      }
-    }
-  },
-  "entity": {
-    "sensor": {
-      "last_tagged_song": {
-        "name": "Last Tagged Song"
       }
     }
   }

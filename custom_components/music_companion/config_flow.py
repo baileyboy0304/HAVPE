@@ -113,38 +113,17 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 existing_data = entry.data
                 break
 
-        # Use much clearer field names that indicate the service
+        # Clean schema without description parameters - let translations handle labels
         data_schema = vol.Schema({
-            # ACRCloud Section
-            vol.Required(CONF_HOST, 
-                        default=existing_data.get(CONF_HOST, ""),
-                        description="ACRCloud Host"): cv.string,
-            vol.Required(CONF_PORT, 
-                        default=existing_data.get(CONF_PORT, 6056),
-                        description="Home Assistant UDP Port"): cv.port,
-            vol.Required(CONF_ACCESS_KEY, 
-                        default=existing_data.get(CONF_ACCESS_KEY, ""),
-                        description="ACRCloud Access Key"): cv.string,
-            vol.Required(CONF_ACCESS_SECRET, 
-                        default=existing_data.get(CONF_ACCESS_SECRET, ""),
-                        description="ACRCloud Access Secret"): cv.string,
-            
-            # Spotify Section
-            vol.Required(CONF_SPOTIFY_CLIENT_ID, 
-                        default=existing_data.get(CONF_SPOTIFY_CLIENT_ID, ""),
-                        description="Spotify Client ID"): cv.string,
-            vol.Required(CONF_SPOTIFY_CLIENT_SECRET, 
-                        default=existing_data.get(CONF_SPOTIFY_CLIENT_SECRET, ""),
-                        description="Spotify Client Secret"): cv.string,
-            vol.Optional(CONF_SPOTIFY_PLAYLIST_ID, 
-                        default=existing_data.get(CONF_SPOTIFY_PLAYLIST_ID, ""),
-                        description="Spotify Playlist ID (Optional)"): cv.string,
-            vol.Optional(CONF_SPOTIFY_CREATE_PLAYLIST, 
-                        default=existing_data.get(CONF_SPOTIFY_CREATE_PLAYLIST, True),
-                        description="Auto-create Spotify Playlist"): cv.boolean,
-            vol.Optional(CONF_SPOTIFY_PLAYLIST_NAME, 
-                        default=existing_data.get(CONF_SPOTIFY_PLAYLIST_NAME, DEFAULT_SPOTIFY_PLAYLIST_NAME),
-                        description="Spotify Playlist Name"): cv.string,
+            vol.Required(CONF_HOST, default=existing_data.get(CONF_HOST, "")): cv.string,
+            vol.Required(CONF_PORT, default=existing_data.get(CONF_PORT, 6056)): cv.port,
+            vol.Required(CONF_ACCESS_KEY, default=existing_data.get(CONF_ACCESS_KEY, "")): cv.string,
+            vol.Required(CONF_ACCESS_SECRET, default=existing_data.get(CONF_ACCESS_SECRET, "")): cv.string,
+            vol.Required(CONF_SPOTIFY_CLIENT_ID, default=existing_data.get(CONF_SPOTIFY_CLIENT_ID, "")): cv.string,
+            vol.Required(CONF_SPOTIFY_CLIENT_SECRET, default=existing_data.get(CONF_SPOTIFY_CLIENT_SECRET, "")): cv.string,
+            vol.Optional(CONF_SPOTIFY_PLAYLIST_ID, default=existing_data.get(CONF_SPOTIFY_PLAYLIST_ID, "")): cv.string,
+            vol.Optional(CONF_SPOTIFY_CREATE_PLAYLIST, default=existing_data.get(CONF_SPOTIFY_CREATE_PLAYLIST, True)): cv.boolean,
+            vol.Optional(CONF_SPOTIFY_PLAYLIST_NAME, default=existing_data.get(CONF_SPOTIFY_PLAYLIST_NAME, DEFAULT_SPOTIFY_PLAYLIST_NAME)): cv.string,
         })
 
         if existing_data:
@@ -155,10 +134,7 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="master_config",
             data_schema=data_schema,
-            errors=errors,
-            description_placeholders={
-                "title": "Update Master Configuration" if existing_data else "Setup Master Configuration"
-            }
+            errors=errors
         )
 
     async def async_step_device(self, user_input=None):
@@ -192,8 +168,8 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         data_schema = vol.Schema({
-            vol.Required(CONF_DEVICE_NAME, description="Device Name"): cv.string,
-            vol.Required(CONF_MEDIA_PLAYER, description="Home Assistant Media Player Entity"): cv.string,
+            vol.Required(CONF_DEVICE_NAME): cv.string,
+            vol.Required(CONF_MEDIA_PLAYER): cv.string,
         })
 
         return self.async_show_form(
@@ -231,33 +207,15 @@ class MusicCompanionOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="master_options",
             data_schema=vol.Schema({
-                vol.Optional(CONF_HOST, 
-                           default=self.config_entry.data.get(CONF_HOST),
-                           description="ACRCloud Host"): cv.string,
-                vol.Optional(CONF_PORT, 
-                           default=self.config_entry.data.get(CONF_PORT, 6056),
-                           description="Home Assistant UDP Port"): cv.port,
-                vol.Optional(CONF_ACCESS_KEY, 
-                           default=self.config_entry.data.get(CONF_ACCESS_KEY),
-                           description="ACRCloud Access Key"): cv.string,
-                vol.Optional(CONF_ACCESS_SECRET, 
-                           default=self.config_entry.data.get(CONF_ACCESS_SECRET),
-                           description="ACRCloud Access Secret"): cv.string,
-                vol.Optional(CONF_SPOTIFY_CLIENT_ID, 
-                           default=self.config_entry.data.get(CONF_SPOTIFY_CLIENT_ID),
-                           description="Spotify Client ID"): cv.string,
-                vol.Optional(CONF_SPOTIFY_CLIENT_SECRET, 
-                           default=self.config_entry.data.get(CONF_SPOTIFY_CLIENT_SECRET),
-                           description="Spotify Client Secret"): cv.string,
-                vol.Optional(CONF_SPOTIFY_PLAYLIST_ID, 
-                           default=self.config_entry.data.get(CONF_SPOTIFY_PLAYLIST_ID, ""),
-                           description="Spotify Playlist ID (Optional)"): cv.string,
-                vol.Optional(CONF_SPOTIFY_CREATE_PLAYLIST, 
-                           default=self.config_entry.data.get(CONF_SPOTIFY_CREATE_PLAYLIST, True),
-                           description="Auto-create Spotify Playlist"): cv.boolean,
-                vol.Optional(CONF_SPOTIFY_PLAYLIST_NAME, 
-                           default=self.config_entry.data.get(CONF_SPOTIFY_PLAYLIST_NAME, DEFAULT_SPOTIFY_PLAYLIST_NAME),
-                           description="Spotify Playlist Name"): cv.string,
+                vol.Optional(CONF_HOST, default=self.config_entry.data.get(CONF_HOST)): cv.string,
+                vol.Optional(CONF_PORT, default=self.config_entry.data.get(CONF_PORT, 6056)): cv.port,
+                vol.Optional(CONF_ACCESS_KEY, default=self.config_entry.data.get(CONF_ACCESS_KEY)): cv.string,
+                vol.Optional(CONF_ACCESS_SECRET, default=self.config_entry.data.get(CONF_ACCESS_SECRET)): cv.string,
+                vol.Optional(CONF_SPOTIFY_CLIENT_ID, default=self.config_entry.data.get(CONF_SPOTIFY_CLIENT_ID)): cv.string,
+                vol.Optional(CONF_SPOTIFY_CLIENT_SECRET, default=self.config_entry.data.get(CONF_SPOTIFY_CLIENT_SECRET)): cv.string,
+                vol.Optional(CONF_SPOTIFY_PLAYLIST_ID, default=self.config_entry.data.get(CONF_SPOTIFY_PLAYLIST_ID, "")): cv.string,
+                vol.Optional(CONF_SPOTIFY_CREATE_PLAYLIST, default=self.config_entry.data.get(CONF_SPOTIFY_CREATE_PLAYLIST, True)): cv.boolean,
+                vol.Optional(CONF_SPOTIFY_PLAYLIST_NAME, default=self.config_entry.data.get(CONF_SPOTIFY_PLAYLIST_NAME, DEFAULT_SPOTIFY_PLAYLIST_NAME)): cv.string,
             })
         )
 
@@ -266,11 +224,7 @@ class MusicCompanionOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="device_options",
             data_schema=vol.Schema({
-                vol.Optional(CONF_DEVICE_NAME, 
-                           default=self.config_entry.data.get(CONF_DEVICE_NAME),
-                           description="Device Name"): cv.string,
-                vol.Optional(CONF_MEDIA_PLAYER, 
-                           default=self.config_entry.data.get(CONF_MEDIA_PLAYER),
-                           description="Home Assistant Media Player Entity"): cv.string,
+                vol.Optional(CONF_DEVICE_NAME, default=self.config_entry.data.get(CONF_DEVICE_NAME)): cv.string,
+                vol.Optional(CONF_MEDIA_PLAYER, default=self.config_entry.data.get(CONF_MEDIA_PLAYER)): cv.string,
             })
         )

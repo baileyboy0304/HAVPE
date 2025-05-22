@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "config_flow": true,
   "iot_class": "local_push",
-  "documentation": "https://github.com/mph070770/music_companion",
+  "documentation": "https://github.com/baileyboy0304/music_companion",
   "dependencies": [],
   "requirements": ["pyacrcloud", "lrc-kit", "python-dateutil"],
-  "codeowners": ["@mph070770"]
+  "codeowners": ["@baileyboy0304"]
 }
