@@ -22,13 +22,12 @@ fetch_audio_tag:
       default: true
       selector:
         boolean:
-    assist_satellite_entity:
-      description: "Assist satellite entity to use for audio tagging (optional - will auto-detect if not provided)"
-      example: "assist_satellite.home_assistant_voice_093d58_assist_satellite"
+    device_name:
+      description: "Name of the configured device to use (optional - will auto-select if not provided)"
+      example: "Voice"
       required: false
       selector:
-        entity:
-          domain: assist_satellite
+        text:
 
 fetch_lyrics:
   description: "Fetch synchronized lyrics for the currently playing track."

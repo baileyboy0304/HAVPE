@@ -14,6 +14,7 @@ CONF_SPOTIFY_PLAYLIST_NAME = "spotify_playlist_name"
 
 # Device Configuration Constants
 CONF_DEVICE_NAME = "device_name"
+CONF_ASSIST_SATELLITE_ENTITY = "assist_satellite_entity"
 CONF_MEDIA_PLAYER_ENTITY = "media_player_entity"
 
 # Entry Types
@@ -26,10 +27,3 @@ SPOTIFY_STORAGE_VERSION = 1
 SPOTIFY_STORAGE_KEY = "spotify_tokens"
 SPOTIFY_SCOPE = "playlist-modify-private playlist-modify-public user-read-private"
 DEFAULT_SPOTIFY_PLAYLIST_NAME = "Home Assistant Music Discoveries"
-
-# Legacy mappings for backward compatibility
-CONF_HOST = CONF_ACRCLOUD_HOST
-CONF_PORT = CONF_HOME_ASSISTANT_UDP_PORT
-CONF_ACCESS_KEY = CONF_ACRCLOUD_ACCESS_KEY
-CONF_ACCESS_SECRET = CONF_ACRCLOUD_ACCESS_SECRET
-CONF_MEDIA_PLAYER = CONF_MEDIA_PLAYER_ENTITY

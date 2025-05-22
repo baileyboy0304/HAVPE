@@ -1,4 +1,5 @@
 import voluptuous as vol
+import logging
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -14,12 +15,31 @@ from .const import (
     CONF_SPOTIFY_CREATE_PLAYLIST,
     CONF_SPOTIFY_PLAYLIST_NAME,
     CONF_DEVICE_NAME,
-    CONF_ASSIST_SATELLITE_ENTITY,        
-    CONF_MEDIA_PLAYER_ENTITY_OVERRIDE,   
+    CONF_ASSIST_SATELLITE_ENTITY,
+    CONF_MEDIA_PLAYER_ENTITY,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
     DEFAULT_SPOTIFY_PLAYLIST_NAME
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+def infer_tagging_switch_from_assist_satellite(hass, assist_satellite_entity):
+    """Infer tagging switch entity from assist satellite entity ID."""
+    if not assist_satellite_entity.startswith("assist_satellite.") or not assist_satellite_entity.endswith("_assist_satellite"):
+        return None, "Invalid assist satellite entity format"
+    
+    # Extract base name: assist_satellite.home_assistant_voice_093d58_assist_satellite -> home_assistant_voice_093d58
+    base_name = assist_satellite_entity[17:-17]  # Remove "assist_satellite." and "_assist_satellite"
+    
+    # Infer tagging switch entity
+    tagging_switch = f"switch.{base_name}_tagging_enable"
+    
+    # Check if switch exists
+    if hass.states.get(tagging_switch) is None:
+        return None, f"Tagging switch '{tagging_switch}' not found"
+    
+    return tagging_switch, None
 
 class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -34,6 +54,7 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not self.hass:
             return
             
+        self._master_config_exists = False
         for entry in self._async_current_entries():
             if entry.data.get("entry_type") == ENTRY_TYPE_MASTER:
                 self._master_config_exists = True
@@ -71,11 +92,22 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         
         if user_input is not None:
+            # Check for existing master configuration
             existing_master = None
-            for entry in self._async_current_entries():
-                if entry.data.get("entry_type") == ENTRY_TYPE_MASTER:
-                    existing_master = entry
-                    break
+            all_entries = self._async_current_entries()
+            
+            _LOGGER.debug("Checking for existing master config. Total entries: %d", len(all_entries))
+            
+            for entry in all_entries:
+                entry_type = entry.data.get("entry_type")
+                _LOGGER.debug("Entry: %s, Type: %s", entry.entry_id, entry_type)
+                if entry_type == ENTRY_TYPE_MASTER:
+                    if existing_master is not None:
+                        # Found multiple master configs - this shouldn't happen!
+                        _LOGGER.error("Multiple master configurations found! Deleting duplicate.")
+                        await self.hass.config_entries.async_remove(entry.entry_id)
+                    else:
+                        existing_master = entry
             
             data = {
                 **user_input,
@@ -83,9 +115,11 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
             
             if existing_master:
+                _LOGGER.info("Updating existing master configuration: %s", existing_master.entry_id)
                 self.hass.config_entries.async_update_entry(existing_master, data=data)
                 return self.async_abort(reason="master_updated")
             else:
+                _LOGGER.info("Creating new master configuration")
                 return self.async_create_entry(title="Master Configuration", data=data)
 
         # Get existing values if updating
@@ -120,6 +154,7 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             device_name = user_input[CONF_DEVICE_NAME]
             assist_satellite = user_input[CONF_ASSIST_SATELLITE_ENTITY]
+            media_player = user_input[CONF_MEDIA_PLAYER_ENTITY]
             
             # Check for duplicate device names
             for entry in self._async_current_entries():
@@ -129,76 +164,47 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     break
             
             if not errors:
-                # Infer entities from assist satellite
-                entity_info = infer_entities_from_assist_satellite(self.hass, assist_satellite)
-                
-                if not entity_info["exists"]:
-                    if not entity_info["switch_exists"]:
-                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "tagging_switch_not_found"
-                    if not entity_info["media_player_exists"]:
-                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "media_player_not_found"
+                # Validate assist satellite entity
+                if not assist_satellite.startswith("assist_satellite."):
+                    errors[CONF_ASSIST_SATELLITE_ENTITY] = "invalid_assist_satellite"
                 else:
-                    # Override media player if provided
-                    media_player = user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE) or entity_info["media_player"]
+                    # Infer tagging switch from assist satellite
+                    tagging_switch, error = infer_tagging_switch_from_assist_satellite(self.hass, assist_satellite)
+                    if error:
+                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "tagging_switch_not_found"
+                
+                # Validate media player entity
+                if not self.hass.states.get(media_player):
+                    errors[CONF_MEDIA_PLAYER_ENTITY] = "media_player_not_found"
+                
+                if not errors:
+                    # Extract base name for storage
+                    base_name = assist_satellite[17:-17] if assist_satellite.endswith("_assist_satellite") else ""
                     
-                    # Validate override if provided
-                    if user_input.get(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE):
-                        if not self.hass.states.get(media_player):
-                            errors[CONF_MEDIA_PLAYER_ENTITY_OVERRIDE] = "media_player_not_found"
-                    
-                    if not errors:
-                        data = {
-                            "device_name": device_name,
-                            "assist_satellite_entity": assist_satellite,
-                            "base_name": entity_info["base_name"],
-                            "tagging_switch_entity": entity_info["tagging_switch"],
-                            "media_player_entity": media_player,
-                            "entry_type": ENTRY_TYPE_DEVICE,
-                        }
-                        return self.async_create_entry(title=device_name, data=data)
+                    data = {
+                        "device_name": device_name,
+                        "assist_satellite_entity": assist_satellite,
+                        "media_player_entity": media_player,
+                        "base_name": base_name,
+                        "tagging_switch_entity": tagging_switch,
+                        "entry_type": ENTRY_TYPE_DEVICE,
+                    }
+                    return self.async_create_entry(title=device_name, data=data)
 
-        # Get available assist satellites
+        # Get available assist satellites and media players
         assist_satellites = []
+        media_players = []
+        
         for state in self.hass.states.async_all():
             if state.entity_id.startswith("assist_satellite."):
                 assist_satellites.append(state.entity_id)
+            elif state.entity_id.startswith("media_player."):
+                media_players.append(state.entity_id)
 
         data_schema = vol.Schema({
             vol.Required(CONF_DEVICE_NAME): cv.string,
             vol.Required(CONF_ASSIST_SATELLITE_ENTITY): vol.In(assist_satellites),
-            vol.Optional(CONF_MEDIA_PLAYER_ENTITY_OVERRIDE, description="Override auto-detected media player"): cv.string,
+            vol.Required(CONF_MEDIA_PLAYER_ENTITY): vol.In(media_players),
         })
 
         return self.async_show_form(step_id="device", data_schema=data_schema, errors=errors)
-    
-    def infer_entities_from_assist_satellite(hass, assist_satellite_entity):
-        """Infer related entities from assist satellite entity ID."""
-        if not assist_satellite_entity.startswith("assist_satellite.") or not assist_satellite_entity.endswith("_assist_satellite"):
-            return {"exists": False, "error": "Invalid assist satellite entity format"}
-        
-        # Extract base name
-        base_name = assist_satellite_entity[17:-17]  # Remove "assist_satellite." and "_assist_satellite"
-        
-        # Infer entity IDs
-        tagging_switch = f"switch.{base_name}_tagging_enable"
-        media_player_primary = f"media_player.{base_name}_media_player_2"
-        media_player_alt = f"media_player.{base_name}_media_player"
-        
-        # Check which entities exist
-        switch_exists = hass.states.get(tagging_switch) is not None
-        media_player_exists = hass.states.get(media_player_primary) is not None
-        
-        # Try alternative media player naming if primary doesn't exist
-        if not media_player_exists:
-            media_player_exists = hass.states.get(media_player_alt) is not None
-            if media_player_exists:
-                media_player_primary = media_player_alt
-        
-        return {
-            "base_name": base_name,
-            "tagging_switch": tagging_switch,
-            "media_player": media_player_primary,
-            "switch_exists": switch_exists,
-            "media_player_exists": media_player_exists,
-            "exists": switch_exists and media_player_exists
-        }

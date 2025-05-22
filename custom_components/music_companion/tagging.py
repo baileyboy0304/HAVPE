@@ -40,7 +40,7 @@ SERVICE_FETCH_AUDIO_TAG_SCHEMA = vol.Schema({
     vol.Optional("duration", default=MAX_TOTAL_DURATION): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
     vol.Optional("include_lyrics", default=True): vol.All(vol.Coerce(bool)),
     vol.Optional("add_to_spotify", default=True): vol.All(vol.Coerce(bool)),
-    vol.Optional("assist_satellite_entity"): cv.entity_id,
+    vol.Optional("device_name"): cv.string,
 })
 
 def get_master_config(hass: HomeAssistant):
@@ -75,6 +75,14 @@ def get_device_configs(hass: HomeAssistant):
         if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_DEVICE:
             devices.append((entry_id, data))
     return devices
+
+def get_device_config_by_name(hass: HomeAssistant, device_name):
+    """Get device configuration by device name."""
+    device_configs = get_device_configs(hass)
+    for entry_id, device_config in device_configs:
+        if device_config.get("device_name") == device_name:
+            return entry_id, device_config
+    return None, None
 
 def get_tagging_config(hass: HomeAssistant, entry_id=None):
     """Get combined configuration for tagging (master + device)."""
@@ -427,25 +435,20 @@ async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
         duration = call.data.get("duration", MAX_TOTAL_DURATION)
         include_lyrics = call.data.get("include_lyrics", True)
         add_to_spotify = call.data.get("add_to_spotify", True)
-        assist_satellite_entity = call.data.get("assist_satellite_entity")
+        device_name = call.data.get("device_name")
         
         tagging_switch_entity_id = None
         entry_id = None
         
-        if assist_satellite_entity:
-            # Find device config that matches this assist satellite
-            device_configs = get_device_configs(hass)
-            for dev_entry_id, dev_config in device_configs:
-                if dev_config.get("assist_satellite_entity") == assist_satellite_entity:
-                    entry_id = dev_entry_id
-                    tagging_switch_entity_id = dev_config.get("tagging_switch_entity")
-                    break
-                    
-            if not entry_id:
-                error_msg = f"No device configuration found for assist satellite: {assist_satellite_entity}"
+        if device_name:
+            # Find device config by name
+            entry_id, device_config = get_device_config_by_name(hass, device_name)
+            if not device_config:
+                error_msg = f"No device configuration found with name: {device_name}"
                 _LOGGER.error(error_msg)
                 await create_error_notification(hass, error_msg)
                 return
+            tagging_switch_entity_id = device_config.get("tagging_switch_entity")
         else:
             # Auto-detect: use first available device
             device_configs = get_device_configs(hass)
@@ -453,8 +456,8 @@ async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
                 entry_id = device_configs[0][0]
                 device_config = device_configs[0][1]
                 tagging_switch_entity_id = device_config.get("tagging_switch_entity")
-                device_name = device_config.get("device_name", "Unknown Device")
-                _LOGGER.info("Auto-selected device: %s", device_name)
+                auto_device_name = device_config.get("device_name", "Unknown Device")
+                _LOGGER.info("Auto-selected device: %s", auto_device_name)
             else:
                 error_msg = "No device configurations found. Please set up a device first."
                 _LOGGER.error(error_msg)
@@ -485,6 +488,18 @@ async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
         error_msg = f"Error in audio tagging service: {str(e)}"
         _LOGGER.error(error_msg)
         await create_error_notification(hass, error_msg)
+
+async def create_error_notification(hass, message):
+    """Create an error notification."""
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": "Audio Tagging Error",
+            "message": message,
+            "notification_id": "tagging_error"
+        }
+    )
 
 
 async def async_setup_tagging_service(hass: HomeAssistant):
