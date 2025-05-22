@@ -8,6 +8,7 @@ import time
 import re
 import asyncio
 import aiohttp
+from .const import DOMAIN
 from homeassistant.helpers.event import async_track_state_change_event
 from .media_tracker import MediaTracker
 
