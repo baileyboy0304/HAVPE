@@ -1,4 +1,4 @@
-DOMAIN = "tagging_and_lyrics"
+DOMAIN = "music_companion"
 
 # Master Configuration Constants
 CONF_MASTER_CONFIG = "master_config"
@@ -21,8 +21,8 @@ ENTRY_TYPE_MASTER = "master"
 ENTRY_TYPE_DEVICE = "device"
 
 # Spotify Auth Constants
-SPOTIFY_AUTH_CALLBACK_PATH = "/api/tagging_and_lyrics/spotify_callback"
+SPOTIFY_AUTH_CALLBACK_PATH = "/api/music_companion/spotify_callback"
 SPOTIFY_STORAGE_VERSION = 1
 SPOTIFY_STORAGE_KEY = "spotify_tokens"
 SPOTIFY_SCOPE = "playlist-modify-private playlist-modify-public user-read-private"
-DEFAULT_SPOTIFY_PLAYLIST_NAME = "My Home Assistant Music"
+DEFAULT_SPOTIFY_PLAYLIST_NAME = "Home Assistant Music Discoveries"

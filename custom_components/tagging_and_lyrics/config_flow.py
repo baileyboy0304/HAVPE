@@ -21,17 +21,20 @@ from .const import (
     DEFAULT_SPOTIFY_PLAYLIST_NAME
 )
 
-class TaggingAndLyricsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     CONNECTION_CLASS = "local_push"
 
     def __init__(self):
         """Initialize the config flow."""
         self._master_config_exists = False
-        self._check_master_config()
 
     def _check_master_config(self):
         """Check if master configuration already exists."""
+        # Only check when we have access to hass
+        if not self.hass:
+            return
+            
         for entry in self._async_current_entries():
             if entry.data.get("entry_type") == ENTRY_TYPE_MASTER:
                 self._master_config_exists = True
@@ -39,6 +42,9 @@ class TaggingAndLyricsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
+        # Check master config when we have hass access
+        self._check_master_config()
+        
         # Show menu to choose between master config and device
         if not self._master_config_exists:
             return await self.async_step_master_config()
@@ -138,6 +144,7 @@ class TaggingAndLyricsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         
         # Check if master config exists
+        self._check_master_config()
         if not self._master_config_exists:
             return self.async_abort(reason="master_required")
         
@@ -175,11 +182,11 @@ class TaggingAndLyricsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     @staticmethod
     def async_get_options_flow(config_entry):
-        return TaggingAndLyricsOptionsFlow(config_entry)
+        return MusicCompanionOptionsFlow(config_entry)
 
 
-class TaggingAndLyricsOptionsFlow(config_entries.OptionsFlow):
-    """Handle options flow for Tagging and Lyrics."""
+class MusicCompanionOptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for Music Companion."""
 
     def __init__(self, config_entry):
         """Initialize options flow."""

@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tagging and Lyrics Setup",
+        "title": "Music Companion Setup",
         "description": "Choose setup type"
       },
       "menu": {
@@ -41,7 +41,7 @@
       },
       "device": {
         "title": "Add Device",
-        "description": "Add a new audio tagging device",
+        "description": "Add a new music companion device",
         "data": {
           "device_name": "Device Name",
           "media_player": "Media Player Entity"
