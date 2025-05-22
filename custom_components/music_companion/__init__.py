@@ -26,21 +26,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_MEDIA_PLAYER): cv.entity_id,
-                vol.Required(CONF_PORT, default=6056): cv.port,
-                vol.Required(CONF_HOST): cv.string,
-                vol.Required(CONF_ACCESS_KEY): cv.string,
-                vol.Required(CONF_ACCESS_SECRET): cv.string,
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-
 def get_master_config(hass: HomeAssistant):
     """Get the master configuration entry."""
     if DOMAIN not in hass.data:
@@ -69,10 +54,6 @@ async def async_setup(hass: HomeAssistant, config) -> bool:
     if DOMAIN not in config:
         return True
 
-    # Store YAML config in a separate key to avoid conflicts with config entries
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["yaml_config"] = config[DOMAIN]
-    
     # Register the tagging and lyrics services
     await async_setup_tagging_service(hass)
     await async_setup_lyrics_service(hass)
