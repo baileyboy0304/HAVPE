@@ -49,7 +49,8 @@ def get_master_config(hass: HomeAssistant):
         return None
     
     for entry_id, data in hass.data[DOMAIN].items():
-        if isinstance(data, dict) and data.get("entry_type") == ENTRY_TYPE_MASTER:
+        # Check if data is dict-like (includes both dict and mappingproxy)
+        if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_MASTER:
             return data
     return None
 
@@ -58,7 +59,11 @@ def get_device_config(hass: HomeAssistant, entry_id=None):
     if not entry_id or DOMAIN not in hass.data:
         return None
     
-    return hass.data[DOMAIN].get(entry_id)
+    data = hass.data[DOMAIN].get(entry_id)
+    # Check if data is dict-like and is a device entry
+    if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_DEVICE:
+        return data
+    return None
 
 def get_device_configs(hass: HomeAssistant):
     """Get all device configuration entries."""
@@ -67,7 +72,7 @@ def get_device_configs(hass: HomeAssistant):
     
     devices = []
     for entry_id, data in hass.data[DOMAIN].items():
-        if isinstance(data, dict) and data.get("entry_type") == ENTRY_TYPE_DEVICE:
+        if hasattr(data, 'get') and data.get("entry_type") == ENTRY_TYPE_DEVICE:
             devices.append((entry_id, data))
     return devices
 
@@ -83,8 +88,9 @@ def get_tagging_config(hass: HomeAssistant, entry_id=None):
     device_config = get_device_config(hass, entry_id) if entry_id else {}
     
     # Map new field names to old ones for backward compatibility
+    # Fix the field name mapping - use the correct field names from config
     combined_config = {
-        "host": master_config.get("acrcloud_host"),
+        "host": master_config.get("acrcloud_host_url"),  # Fixed: was "acrcloud_host"
         "port": master_config.get("home_assistant_udp_port", 6056),
         "access_key": master_config.get("acrcloud_access_key"),
         "access_secret": master_config.get("acrcloud_access_secret"),
