@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tagging and Lyrics Setup",
+        "description": "Choose setup type"
+      },
+      "menu": {
+        "title": "Setup Type",
+        "description": "Choose what you want to set up",
+        "menu_options": {
+          "master": "Master Configuration (ACRCloud & Spotify)",
+          "device": "Add Device"
+        }
+      },
+      "master_config": {
+        "title": "Master Configuration",
+        "description": "Configure ACRCloud and Spotify credentials (shared by all devices)",
+        "data": {
+          "host": "ACRCloud Host",
+          "port": "UDP Port",
+          "access_key": "ACRCloud Access Key",
+          "access_secret": "ACRCloud Access Secret",
+          "spotify_client_id": "Spotify Client ID",
+          "spotify_client_secret": "Spotify Client Secret",
+          "spotify_playlist_id": "Spotify Playlist ID (Optional)",
+          "spotify_create_playlist": "Create Playlist Automatically",
+          "spotify_playlist_name": "Playlist Name"
+        },
+        "data_description": {
+          "host": "ACRCloud recognition service host (e.g., 'identify-us-west-2.acrcloud.com')",
+          "port": "UDP port number for receiving audio data (default: 6056)",
+          "access_key": "Your ACRCloud access key from your ACRCloud console",
+          "access_secret": "Your ACRCloud access secret from your ACRCloud console",
+          "spotify_client_id": "Your Spotify application client ID",
+          "spotify_client_secret": "Your Spotify application client secret",
+          "spotify_playlist_id": "Existing Spotify playlist ID (leave empty to create new)",
+          "spotify_create_playlist": "Automatically create a new playlist if one doesn't exist",
+          "spotify_playlist_name": "Name for the playlist where discovered tracks will be added"
+        }
+      },
+      "device": {
+        "title": "Add Device",
+        "description": "Add a new audio tagging device",
+        "data": {
+          "device_name": "Device Name",
+          "media_player": "Media Player Entity"
+        },
+        "data_description": {
+          "device_name": "A friendly name for this device (e.g., 'Living Room', 'Kitchen Speaker', 'Bedroom TV')",
+          "media_player": "The media player entity ID to monitor for lyrics synchronization"
+        }
+      }
+    },
+    "error": {
+      "name_exists": "A device with this name already exists. Please choose a different name.",
+      "master_exists": "Master configuration already exists. Use the update option instead.",
+      "master_required": "Master configuration is required before adding devices."
+    },
+    "abort": {
+      "master_updated": "Master configuration has been updated successfully.",
+      "master_required": "Please set up the Master Configuration first before adding devices."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Configuration"
+      },
+      "master_options": {
+        "title": "Update Master Configuration",
+        "description": "Update ACRCloud and Spotify settings",
+        "data": {
+          "host": "ACRCloud Host",
+          "port": "UDP Port", 
+          "access_key": "ACRCloud Access Key",
+          "access_secret": "ACRCloud Access Secret",
+          "spotify_client_id": "Spotify Client ID",
+          "spotify_client_secret": "Spotify Client Secret",
+          "spotify_playlist_id": "Spotify Playlist ID (Optional)",
+          "spotify_create_playlist": "Create Playlist Automatically",
+          "spotify_playlist_name": "Playlist Name"
+        }
+      },
+      "device_options": {
+        "title": "Update Device Configuration",
+        "description": "Update device settings",
+        "data": {
+          "device_name": "Device Name",
+          "media_player": "Media Player Entity"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_tagged_song": {
+        "name": "Last Tagged Song"
+      }
+    }
+  }
+}
