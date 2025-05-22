@@ -1,0 +1,29 @@
+fetch_audio_tag:
+  description: "Recognize audio from a UDP stream and tag it."
+  fields:
+    duration:
+      description: "Recording duration in seconds."
+      example: 10
+    include_lyrics:
+      description: "True if after identifying the track, lyrics should also be fetched"
+      example: True
+    add_to_spotify:
+      description: "Add the discovered song to a Spotify playlist"
+      example: True
+
+fetch_lyrics:
+  description: "Fetch lyrics for the currently playing track."
+  fields:
+    entity_id:
+      description: "The media player entity to fetch lyrics for."
+      example: "media_player.music_room_speaker_media_player_2"
+
+add_to_spotify:
+  description: "Add a track to your Spotify playlist."
+  fields:
+    title:
+      description: "Title of the track to add (optional if last tagged song exists)."
+      example: "Billie Jean"
+    artist:
+      description: "Artist of the track to add (optional if last tagged song exists)."
+      example: "Michael Jackson"
