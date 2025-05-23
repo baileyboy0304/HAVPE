@@ -719,7 +719,8 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
             # Enhanced debugging to see what's in each entry
             _LOGGER.debug("Processing entry %s: type=%s, content=%s", eid, type(config_data), config_data)
             
-            if isinstance(config_data, dict):
+            # Check for dict-like objects (including mappingproxy used by Home Assistant)
+            if hasattr(config_data, 'get'):
                 entry_type = config_data.get("entry_type")
                 media_player = config_data.get("media_player_entity")
                 _LOGGER.debug("Entry %s: entry_type=%s, media_player=%s", eid, entry_type, media_player)
@@ -729,7 +730,7 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
                     _LOGGER.debug("MATCH FOUND: %s", eid)
                     break
             else:
-                _LOGGER.debug("Entry %s is not a dict, it's a %s with value: %s", eid, type(config_data), config_data)
+                _LOGGER.debug("Entry %s is not dict-like, it's a %s with value: %s", eid, type(config_data), config_data)
         
         if not entry_id:
             _LOGGER.warning("No device config found for media player: %s", entity_id)
