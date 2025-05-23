@@ -12,7 +12,7 @@ class MediaTracker:
     
     def __init__(self, hass: HomeAssistant, entity_id: str, 
                  position_callback=None, track_change_callback=None,
-                 is_radio_source=False):
+                 is_radio_source=False, entry_id: str = None):
         """Initialize the MediaTracker.
         
         Args:
@@ -21,12 +21,14 @@ class MediaTracker:
             position_callback: Called when position updates with current timecode
             track_change_callback: Called when track changes or seek detected
             is_radio_source: True if source is radio/fingerprinted audio
+            entry_id: Device entry ID for logging purposes
         """
         self.hass = hass
         self.entity_id = entity_id
         self.position_callback = position_callback
         self.track_change_callback = track_change_callback
         self.is_radio_source = is_radio_source  # Flag for radio sources
+        self.entry_id = entry_id  # Device identifier for logging
         
         # Media state tracking
         self.current_track = ""
@@ -68,8 +70,8 @@ class MediaTracker:
             self._handle_state_change
         )
         
-        _LOGGER.info("MediaTracker: Started tracking %s (radio source: %s)", 
-                    self.entity_id, self.is_radio_source)
+        _LOGGER.info("MediaTracker: Started tracking %s (radio source: %s, device: %s)", 
+                    self.entity_id, self.is_radio_source, self.entry_id)
     
     async def stop_tracking(self):
         """Stop tracking the media player state."""
@@ -83,7 +85,7 @@ class MediaTracker:
                 pass
             self.monitor_task = None
             
-        _LOGGER.info("MediaTracker: Stopped tracking %s", self.entity_id)
+        _LOGGER.info("MediaTracker: Stopped tracking %s (device: %s)", self.entity_id, self.entry_id)
     
     def update_from_state(self) -> bool:
         """Update tracker state from media player entity state.
@@ -91,7 +93,7 @@ class MediaTracker:
         """
         player_state = self.hass.states.get(self.entity_id)
         if not player_state:
-            _LOGGER.error("MediaTracker: Media player entity not found: %s", self.entity_id)
+            _LOGGER.error("MediaTracker: Media player entity not found: %s (device: %s)", self.entity_id, self.entry_id)
             return False
             
         # Get current state attributes
@@ -118,7 +120,7 @@ class MediaTracker:
         if state_changed:
             if new_state == "paused" and self.state == "playing":
                 self.pause_start_time = datetime.datetime.now(datetime.timezone.utc)
-                _LOGGER.debug("MediaTracker: Playback paused at %s", self.pause_start_time)
+                _LOGGER.debug("MediaTracker: Playback paused at %s (device: %s)", self.pause_start_time, self.entry_id)
             
             elif new_state == "playing" and self.state == "paused":
                 if self.pause_start_time:
@@ -133,14 +135,14 @@ class MediaTracker:
                             self.position_updated_at = datetime.datetime.fromisoformat(self.position_updated_at)
                         
                         self.position_updated_at += datetime.timedelta(seconds=pause_duration)
-                        _LOGGER.debug("MediaTracker: Adjusted position_updated_at by %s seconds after pause", 
-                                     pause_duration)
+                        _LOGGER.debug("MediaTracker: Adjusted position_updated_at by %s seconds after pause (device: %s)", 
+                                     pause_duration, self.entry_id)
         
         # For position changes, only update if not a radio source
         position_changed = False
         if not self.is_radio_source and new_position is not None and self.media_position is not None and new_position != self.media_position:
             position_changed = True
-            _LOGGER.debug("MediaTracker: Position changed from %.2f to %.2f", self.media_position, new_position)
+            _LOGGER.debug("MediaTracker: Position changed from %.2f to %.2f (device: %s)", self.media_position, new_position, self.entry_id)
         
         # Update current state
         self.state = new_state
@@ -167,7 +169,7 @@ class MediaTracker:
         self.media_position = position
         self.position_updated_at = updated_at
         self.paused_duration = 0  # Reset paused duration
-        _LOGGER.info("MediaTracker: Set initial position to %.2f", position)
+        _LOGGER.info("MediaTracker: Set initial position to %.2f (device: %s)", position, self.entry_id)
 
     def calculate_current_position(self) -> float:
         """Calculate the current media position based on last known position and time elapsed."""
@@ -182,8 +184,8 @@ class MediaTracker:
             try:
                 last_update_time = datetime.datetime.fromisoformat(self.position_updated_at)
             except ValueError:
-                _LOGGER.error("MediaTracker: Error parsing position_updated_at timestamp: %s", 
-                             self.position_updated_at)
+                _LOGGER.error("MediaTracker: Error parsing position_updated_at timestamp: %s (device: %s)", 
+                             self.position_updated_at, self.entry_id)
                 return self.last_calculated_position
         else:
             last_update_time = self.position_updated_at
@@ -220,14 +222,14 @@ class MediaTracker:
                     
                     # Occasionally log the current position for debugging
                     if update_count % 100 == 0:
-                        _LOGGER.debug("MediaTracker: Current position: %.2f seconds", current_position)
+                        _LOGGER.debug("MediaTracker: Current position: %.2f seconds (device: %s)", current_position, self.entry_id)
                 
                 await asyncio.sleep(self.position_update_interval)
         except asyncio.CancelledError:
-            _LOGGER.debug("MediaTracker: Position monitor loop cancelled")
+            _LOGGER.debug("MediaTracker: Position monitor loop cancelled (device: %s)", self.entry_id)
             raise
         except Exception as e:
-            _LOGGER.error("MediaTracker: Error in position monitor loop: %s", str(e))
+            _LOGGER.error("MediaTracker: Error in position monitor loop (device: %s): %s", self.entry_id, str(e))
     
     async def _handle_state_change(self, event):
         """Handle media player state changes."""
@@ -235,7 +237,7 @@ class MediaTracker:
         old_state = event.data.get('old_state')
         new_state = event.data.get('new_state')
         
-        _LOGGER.debug("MediaTracker: State change detected for %s", entity_id)
+        _LOGGER.debug("MediaTracker: State change detected for %s (device: %s)", entity_id, self.entry_id)
         
         # Handle case when state is None
         if not new_state:
@@ -257,11 +259,11 @@ class MediaTracker:
             # Only treat it as a track change if the media_content_id changed or 
             # track/artist changed while media_id is the same
             if new_media_id != old_media_id:
-                _LOGGER.info("MediaTracker: Media content ID changed - treating as track change")
+                _LOGGER.info("MediaTracker: Media content ID changed - treating as track change (device: %s)", self.entry_id)
                 if self.track_change_callback:
                     self.track_change_callback(True)  # True = actual track change
             else:
                 # This is just a position change, trigger a resync
-                _LOGGER.debug("MediaTracker: Position changed but same track - resyncing")
+                _LOGGER.debug("MediaTracker: Position changed but same track - resyncing (device: %s)", self.entry_id)
                 if self.track_change_callback:
                     self.track_change_callback(False)  # False = just a position change

@@ -88,11 +88,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     """Set up the Music Companion integration from a config entry."""
     entry_type = config_entry.data.get("entry_type", ENTRY_TYPE_DEVICE)
     
+    _LOGGER.warning("Setting up config entry: %s, type: %s, data: %s", config_entry.entry_id, entry_type, config_entry.data)
+    
     # Initialize the domain data structure if it doesn't exist
     hass.data.setdefault(DOMAIN, {})
     
     # Store this entry's data using the entry ID as the key
     hass.data[DOMAIN][config_entry.entry_id] = config_entry.data
+    
+    _LOGGER.warning("Stored config entry in hass.data[%s][%s]", DOMAIN, config_entry.entry_id)
+    _LOGGER.warning("Current hass.data[%s] keys: %s", DOMAIN, list(hass.data[DOMAIN].keys()))
 
     if entry_type == ENTRY_TYPE_MASTER:
         return await async_setup_master_entry(hass, config_entry)
