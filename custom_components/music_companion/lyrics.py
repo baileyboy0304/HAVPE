@@ -715,7 +715,9 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
         _LOGGER.debug("Looking for device config matching entity: %s", entity_id)
         for eid, config_data in hass.data[DOMAIN].items():
             _LOGGER.debug("Checking entry %s: %s", eid, config_data)
+            # Only check actual device config entries, not data entries or master config
             if (isinstance(config_data, dict) and 
+                config_data.get("entry_type") == "device" and
                 config_data.get("media_player_entity") == entity_id):
                 entry_id = eid
                 _LOGGER.debug("Found matching device config: %s", eid)
