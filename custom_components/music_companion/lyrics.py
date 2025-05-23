@@ -714,14 +714,15 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
     if DOMAIN in hass.data:
         _LOGGER.debug("Looking for device config matching entity: %s", entity_id)
         for eid, config_data in hass.data[DOMAIN].items():
-            _LOGGER.debug("Checking entry %s: %s", eid, config_data)
-            # Only check actual device config entries, not data entries or master config
-            if (isinstance(config_data, dict) and 
-                config_data.get("entry_type") == "device" and
-                config_data.get("media_player_entity") == entity_id):
-                entry_id = eid
-                _LOGGER.debug("Found matching device config: %s", eid)
-                break
+            if isinstance(config_data, dict):
+                entry_type = config_data.get("entry_type")
+                media_player = config_data.get("media_player_entity")
+                _LOGGER.debug("Entry %s: entry_type=%s, media_player=%s", eid, entry_type, media_player)
+                
+                if (entry_type == "device" and media_player == entity_id):
+                    entry_id = eid
+                    _LOGGER.debug("MATCH FOUND: %s", eid)
+                    break
         
         if not entry_id:
             _LOGGER.warning("No device config found for media player: %s", entity_id)
