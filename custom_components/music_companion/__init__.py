@@ -183,7 +183,7 @@ async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntr
         return False
 
     # Forward the entry to the text platform to create lyrics entities
-    await hass.config_entries.async_forward_entry_setup(config_entry, "text")
+    await hass.config_entries.async_forward_entry_setups(config_entry, ["text"])
 
     # Show success notification
     await setup_device_notification(hass, device_name, config_entry.entry_id)

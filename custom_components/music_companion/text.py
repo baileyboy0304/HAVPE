@@ -65,8 +65,12 @@ class LyricsTextEntity(TextEntity):
         self._attr_native_max = 255
         self._attr_native_min = 0
         
-        # Device information
+        # Set the entity ID we want
         device_name = config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
+        safe_name = device_name.lower().replace(" ", "_").replace("-", "_")
+        self._entity_id = f"text.{safe_name}_lyrics_{line_type}"
+        
+        # Device information
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, config_entry.entry_id)},
             name=f"Music Companion - {device_name}",
@@ -78,9 +82,12 @@ class LyricsTextEntity(TextEntity):
     @property
     def entity_id(self) -> str:
         """Return the entity ID."""
-        device_name = self._config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
-        safe_name = device_name.lower().replace(" ", "_").replace("-", "_")
-        return f"text.{safe_name}_lyrics_{self._line_type}"
+        return self._entity_id
+    
+    @entity_id.setter
+    def entity_id(self, value: str) -> None:
+        """Set the entity ID."""
+        self._entity_id = value
     
     async def async_set_value(self, value: str) -> None:
         """Set the text value."""
