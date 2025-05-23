@@ -21,9 +21,19 @@ CONF_MEDIA_PLAYER_ENTITY = "media_player_entity"
 ENTRY_TYPE_MASTER = "master"
 ENTRY_TYPE_DEVICE = "device"
 
+# Device-specific entity templates
+DEVICE_LYRICS_LINE1_TEMPLATE = "input_text.{}_lyrics_line1"
+DEVICE_LYRICS_LINE2_TEMPLATE = "input_text.{}_lyrics_line2"
+DEVICE_LYRICS_LINE3_TEMPLATE = "input_text.{}_lyrics_line3"
+
 # Spotify Auth Constants
 SPOTIFY_AUTH_CALLBACK_PATH = "/api/music_companion/spotify_callback"
 SPOTIFY_STORAGE_VERSION = 1
 SPOTIFY_STORAGE_KEY = "spotify_tokens"
 SPOTIFY_SCOPE = "playlist-modify-private playlist-modify-public user-read-private"
 DEFAULT_SPOTIFY_PLAYLIST_NAME = "Home Assistant Music Discoveries"
+
+# Device data structure keys
+DEVICE_DATA_LYRICS_SYNC = "lyrics_sync"
+DEVICE_DATA_LAST_MEDIA_CONTENT_ID = "last_media_content_id"
+DEVICE_DATA_LYRICS_ENTITIES = "lyrics_entities"

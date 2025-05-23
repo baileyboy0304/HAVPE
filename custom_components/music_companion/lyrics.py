@@ -8,26 +8,76 @@ import time
 import re
 import asyncio
 import aiohttp
-from .const import DOMAIN
+from .const import (
+    DOMAIN, 
+    DEVICE_DATA_LYRICS_SYNC, 
+    DEVICE_DATA_LAST_MEDIA_CONTENT_ID,
+    DEVICE_DATA_LYRICS_ENTITIES,
+    DEVICE_LYRICS_LINE1_TEMPLATE,
+    DEVICE_LYRICS_LINE2_TEMPLATE,
+    DEVICE_LYRICS_LINE3_TEMPLATE
+)
 from homeassistant.helpers.event import async_track_state_change_event
 from .media_tracker import MediaTracker
 
 _LOGGER = logging.getLogger(__name__)
-
-# Global variables
-LAST_MEDIA_CONTENT_ID = None
-ACTIVE_LYRICS_SYNC = None  # Instance of LyricsSynchronizer
 
 SERVICE_FETCH_LYRICS_SCHEMA = vol.Schema({
     vol.Required("entity_id"): cv.entity_id
 })
 
 
+def get_device_data(hass: HomeAssistant, entry_id: str = None):
+    """Get or create device-specific data structure."""
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+    
+    # If no entry_id provided, use default
+    if not entry_id:
+        entry_id = "default"
+    
+    if entry_id not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][entry_id] = {}
+    
+    device_data = hass.data[DOMAIN][entry_id]
+    
+    # Initialize device-specific data if not present
+    if DEVICE_DATA_LYRICS_SYNC not in device_data:
+        device_data[DEVICE_DATA_LYRICS_SYNC] = None
+    if DEVICE_DATA_LAST_MEDIA_CONTENT_ID not in device_data:
+        device_data[DEVICE_DATA_LAST_MEDIA_CONTENT_ID] = None
+    
+    return device_data
+
+
+def get_device_lyrics_entities(hass: HomeAssistant, entry_id: str = None):
+    """Get device-specific lyrics entity names."""
+    device_data = get_device_data(hass, entry_id)
+    
+    if DEVICE_DATA_LYRICS_ENTITIES not in device_data:
+        # Get device name from config to generate entity names
+        device_name = "default"
+        if entry_id and entry_id != "default" and entry_id in hass.data.get(DOMAIN, {}):
+            config_data = hass.data[DOMAIN][entry_id]
+            if isinstance(config_data, dict) and "device_name" in config_data:
+                # Convert device name to entity-friendly format
+                device_name = config_data["device_name"].lower().replace(" ", "_").replace("-", "_")
+        
+        device_data[DEVICE_DATA_LYRICS_ENTITIES] = {
+            "line1": DEVICE_LYRICS_LINE1_TEMPLATE.format(device_name),
+            "line2": DEVICE_LYRICS_LINE2_TEMPLATE.format(device_name),
+            "line3": DEVICE_LYRICS_LINE3_TEMPLATE.format(device_name),
+        }
+    
+    return device_data[DEVICE_DATA_LYRICS_ENTITIES]
+
+
 class LyricsSynchronizer:
     """Manages lyrics synchronization using MediaTracker."""
     
-    def __init__(self, hass: HomeAssistant):
+    def __init__(self, hass: HomeAssistant, entry_id: str = None):
         self.hass = hass
+        self.entry_id = entry_id
         self.media_tracker = None
         self.entity_id = None
         
@@ -63,11 +113,12 @@ class LyricsSynchronizer:
         if player_state:
             self.current_track = player_state.attributes.get("media_title", "")
             self.current_artist = player_state.attributes.get("media_artist", "")
-            _LOGGER.info("LyricsSynchronizer: Tracking track '%s' by '%s'", self.current_track, self.current_artist)
+            _LOGGER.info("LyricsSynchronizer: Tracking track '%s' by '%s' (device: %s)", 
+                        self.current_track, self.current_artist, self.entry_id)
         
         # Immediately show "Loading lyrics..." message
         await update_lyrics_input_text(self.hass, "", "Loading lyrics...", 
-                                     self.lyrics[0] if lyrics and len(lyrics) > 0 else "")
+                                     self.lyrics[0] if lyrics and len(lyrics) > 0 else "", self.entry_id)
         
         # Initialize media tracker with callbacks, passing radio source flag
         self.media_tracker = MediaTracker(
@@ -75,7 +126,8 @@ class LyricsSynchronizer:
             self.entity_id,
             self.update_lyrics_display,  # Position update callback
             self.handle_track_change,    # Track change callback
-            is_radio_source              # Flag for radio source
+            is_radio_source,             # Flag for radio source
+            self.entry_id                # Device entry ID
         )
         
         # Set the initial position if provided
@@ -85,7 +137,8 @@ class LyricsSynchronizer:
             
             # Calculate initial position in milliseconds for better lyrics placement
             initial_position_ms = pos * 1000
-            _LOGGER.info("LyricsSynchronizer: Initial position is %.2f ms", initial_position_ms)
+            _LOGGER.info("LyricsSynchronizer: Initial position is %.2f ms (device: %s)", 
+                        initial_position_ms, self.entry_id)
             
             # Find the correct starting point in lyrics
             line_found = False
@@ -100,8 +153,8 @@ class LyricsSynchronizer:
                         if timeline[i-1] > initial_position_ms and timeline[i-1] < initial_position_ms + 10000:
                             # Found a line coming up soon - use it
                             self.current_line_index = i-1
-                            _LOGGER.info("LyricsSynchronizer: Starting at upcoming line index %d at %d ms", 
-                                       i-1, timeline[i-1])
+                            _LOGGER.info("LyricsSynchronizer: Starting at upcoming line index %d at %d ms (device: %s)", 
+                                       i-1, timeline[i-1], self.entry_id)
                             line_found = True
                             
                             # Display immediately
@@ -109,7 +162,7 @@ class LyricsSynchronizer:
                             current_line = lyrics[i-1]
                             next_line = lyrics[i] if i < len(lyrics) else ""
                             
-                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                             break
                 
                 # If we didn't find an upcoming line, or this isn't a radio source,
@@ -119,25 +172,26 @@ class LyricsSynchronizer:
                         if timeline[i-1] <= initial_position_ms < timeline[i]:
                             # We found the right line to start with
                             self.current_line_index = i-1
-                            _LOGGER.info("LyricsSynchronizer: Starting at line index %d", self.current_line_index)
+                            _LOGGER.info("LyricsSynchronizer: Starting at line index %d (device: %s)", 
+                                        self.current_line_index, self.entry_id)
                             
                             # Display the initial lyrics
                             previous_line = lyrics[i-2] if i > 1 else ""
                             current_line = lyrics[i-1]
                             next_line = lyrics[i] if i < len(lyrics) else ""
                             
-                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                             break
             
             # If we couldn't find the right position in the timeline, 
             # at least display the first line if we have lyrics
             if self.current_line_index == -1 and len(lyrics) > 0:
                 # Show first few lines immediately
-                _LOGGER.info("LyricsSynchronizer: No matching position found, showing first lines")
+                _LOGGER.info("LyricsSynchronizer: No matching position found, showing first lines (device: %s)", self.entry_id)
                 if len(lyrics) > 1:
-                    await update_lyrics_input_text(self.hass, "", lyrics[0], lyrics[1])
+                    await update_lyrics_input_text(self.hass, "", lyrics[0], lyrics[1], self.entry_id)
                 else:
-                    await update_lyrics_input_text(self.hass, "", lyrics[0], "")
+                    await update_lyrics_input_text(self.hass, "", lyrics[0], "", self.entry_id)
         
         # Start tracking
         await self.media_tracker.start_tracking()
@@ -146,8 +200,8 @@ class LyricsSynchronizer:
         # Start a periodic force update task
         asyncio.create_task(self._force_update_task())
         
-        _LOGGER.info("LyricsSynchronizer: Started for %s with %d lyrics lines (radio source: %s)", 
-                    self.entity_id, len(self.lyrics), is_radio_source)
+        _LOGGER.info("LyricsSynchronizer: Started for %s with %d lyrics lines (radio source: %s, device: %s)", 
+                    self.entity_id, len(self.lyrics), is_radio_source, self.entry_id)
     
     async def stop(self):
         """Stop lyrics synchronization."""
@@ -161,14 +215,14 @@ class LyricsSynchronizer:
             self.media_tracker = None
         
         # Clear display
-        await update_lyrics_input_text(self.hass, "", "", "")
+        await update_lyrics_input_text(self.hass, "", "", "", self.entry_id)
         
-        _LOGGER.info("LyricsSynchronizer: Stopped")
+        _LOGGER.info("LyricsSynchronizer: Stopped (device: %s)", self.entry_id)
     
     def update_lyrics_display(self, media_timecode: float):
         """Update lyrics display based on current media position."""
         if not self.active or not self.timeline or not self.lyrics:
-            _LOGGER.warning("LyricsSynchronizer: Unable to update lyrics - no active timeline or lyrics")
+            _LOGGER.warning("LyricsSynchronizer: Unable to update lyrics - no active timeline or lyrics (device: %s)", self.entry_id)
             return
             
         # Record update time for force update mechanism
@@ -179,12 +233,12 @@ class LyricsSynchronizer:
         
         # Log position occasionally for debugging
         if int(media_timecode) % 5 == 0 and abs(media_timecode - int(media_timecode)) < 0.15:  # Log roughly every 5 seconds
-            _LOGGER.debug("LyricsSynchronizer: Current position: %.2f seconds (%.2f ms)", 
-                        media_timecode, position_ms)
+            _LOGGER.debug("LyricsSynchronizer: Current position: %.2f seconds (%.2f ms, device: %s)", 
+                        media_timecode, position_ms, self.entry_id)
         
         # Check if lyrics finished
         if position_ms >= self.timeline[-1]:
-            _LOGGER.info("LyricsSynchronizer: Lyrics finished")
+            _LOGGER.info("LyricsSynchronizer: Lyrics finished (device: %s)", self.entry_id)
             asyncio.create_task(self.stop())
             return
             
@@ -202,11 +256,11 @@ class LyricsSynchronizer:
                     
                     # Update display
                     asyncio.create_task(
-                        update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                        update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                     )
                     
-                    _LOGGER.debug("LyricsSynchronizer: Updated to line %d at %f ms", 
-                                i-1, position_ms)
+                    _LOGGER.debug("LyricsSynchronizer: Updated to line %d at %f ms (device: %s)", 
+                                i-1, position_ms, self.entry_id)
                 
                 found_position = True
                 break
@@ -217,7 +271,7 @@ class LyricsSynchronizer:
             if self.current_line_index != -1:
                 self.current_line_index = -1
                 asyncio.create_task(
-                    update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0])
+                    update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
                 )
     
     def handle_track_change(self, is_track_change=True):
@@ -228,11 +282,11 @@ class LyricsSynchronizer:
         """
         if is_track_change:
             # For actual track changes, stop lyrics entirely
-            _LOGGER.info("LyricsSynchronizer: Track change detected, stopping lyrics")
+            _LOGGER.info("LyricsSynchronizer: Track change detected, stopping lyrics (device: %s)", self.entry_id)
             asyncio.create_task(self.stop())
         else:
             # For seek operations, just reset the current line index to force resyncing
-            _LOGGER.info("LyricsSynchronizer: Seek operation detected, resyncing lyrics")
+            _LOGGER.info("LyricsSynchronizer: Seek operation detected, resyncing lyrics (device: %s)", self.entry_id)
             
             # Get current position to find the right lyrics line
             if self.media_tracker and self.media_tracker.media_position is not None:
@@ -254,23 +308,23 @@ class LyricsSynchronizer:
                         next_line = self.lyrics[i] if i < len(self.lyrics) else ""
                         
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                            update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                         )
                         
-                        _LOGGER.info("LyricsSynchronizer: Resynced to line %d at %f ms", 
-                                   i-1, position_ms)
+                        _LOGGER.info("LyricsSynchronizer: Resynced to line %d at %f ms (device: %s)", 
+                                   i-1, position_ms, self.entry_id)
                         break
                 
                 # If we couldn't find a matching line, check if we're before the first line
                 if self.current_line_index == -1:
                     if position_ms < self.timeline[0]:
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0])
+                            update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
                         )
                     else:
                         # We might be past the end
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, "", "Lyrics finished", "")
+                            update_lyrics_input_text(self.hass, "", "Lyrics finished", "", self.entry_id)
                         )
     
     async def _force_update_task(self):
@@ -294,8 +348,8 @@ class LyricsSynchronizer:
                 time_since_update = current_time - self.last_update_time
                 
                 if time_since_update > (0.5 if initial_updates < max_initial_updates else self.force_update_interval):
-                    _LOGGER.debug("LyricsSynchronizer: Forcing display update (%.1f seconds since last update)", 
-                                 time_since_update)
+                    _LOGGER.debug("LyricsSynchronizer: Forcing display update (%.1f seconds since last update, device: %s)", 
+                                 time_since_update, self.entry_id)
                     
                     # Recalculate current position
                     if self.media_tracker and self.media_tracker.state == "playing":
@@ -313,10 +367,10 @@ class LyricsSynchronizer:
                                     next_line = self.lyrics[i] if i < len(self.lyrics) else ""
                                     
                                     # Force update the display
-                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                                     self.last_update_time = current_time
-                                    _LOGGER.debug("LyricsSynchronizer: Force updated to line %d (%.1f ms)", 
-                                                i-1, position_ms)
+                                    _LOGGER.debug("LyricsSynchronizer: Force updated to line %d (%.1f ms, device: %s)", 
+                                                i-1, position_ms, self.entry_id)
                                     found_line = True
                                     break
                             
@@ -325,36 +379,36 @@ class LyricsSynchronizer:
                                 if position_ms < self.timeline[0]:
                                     # Before first line
                                     await update_lyrics_input_text(self.hass, "", 
-                                                                "Coming up...", self.lyrics[0])
+                                                                "Coming up...", self.lyrics[0], self.entry_id)
                                 elif position_ms >= self.timeline[-1]:
                                     # Past the last line
                                     await update_lyrics_input_text(self.hass, 
-                                                                self.lyrics[-1], "End of lyrics", "")
+                                                                self.lyrics[-1], "End of lyrics", "", self.entry_id)
                                 else:
                                     # We should have found a line - try to recover
                                     # Find the closest line
                                     closest_idx = min(range(len(self.timeline)), 
                                                     key=lambda i: abs(self.timeline[i] - position_ms))
                                     
-                                    _LOGGER.info("LyricsSynchronizer: Couldn't find exact line match, using closest: %d", 
-                                               closest_idx)
+                                    _LOGGER.info("LyricsSynchronizer: Couldn't find exact line match, using closest: %d (device: %s)", 
+                                               closest_idx, self.entry_id)
                                     
                                     previous_line = self.lyrics[closest_idx-1] if closest_idx > 0 else ""
                                     current_line = self.lyrics[closest_idx]
                                     next_line = self.lyrics[closest_idx+1] if closest_idx < len(self.lyrics)-1 else ""
                                     
-                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line)
+                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
                                 
                                 self.last_update_time = current_time
                         else:
                             # If we have lyrics but no timeline yet, or in initialization
                             if len(self.lyrics) > 0:
-                                await update_lyrics_input_text(self.hass, "", "Loading lyrics...", self.lyrics[0])
+                                await update_lyrics_input_text(self.hass, "", "Loading lyrics...", self.lyrics[0], self.entry_id)
                                 self.last_update_time = current_time
         except asyncio.CancelledError:
-            _LOGGER.debug("LyricsSynchronizer: Force update task cancelled")
+            _LOGGER.debug("LyricsSynchronizer: Force update task cancelled (device: %s)", self.entry_id)
         except Exception as e:
-            _LOGGER.error("LyricsSynchronizer: Error in force update task: %s", str(e))
+            _LOGGER.error("LyricsSynchronizer: Error in force update task (device: %s): %s", self.entry_id, str(e))
 
 
 def lyricSplit(lyrics):
@@ -394,11 +448,13 @@ def lyricSplit(lyrics):
     return timeline, lrc
 
 
-async def update_lyrics_input_text(hass: HomeAssistant, previous_line: str, current_line: str, next_line: str):
+async def update_lyrics_input_text(hass: HomeAssistant, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
     """Update the input_text entities with the current lyrics lines."""
-    await hass.services.async_call("input_text", "set_value", {"entity_id": "input_text.line1", "value": previous_line})
-    await hass.services.async_call("input_text", "set_value", {"entity_id": "input_text.line2", "value": current_line})
-    await hass.services.async_call("input_text", "set_value", {"entity_id": "input_text.line3", "value": next_line})
+    lyrics_entities = get_device_lyrics_entities(hass, entry_id)
+    
+    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line1"], "value": previous_line})
+    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line2"], "value": current_line})
+    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line3"], "value": next_line})
 
 
 def clean_track_name(track):
@@ -465,18 +521,18 @@ def clean_track_name(track):
     return track
 
 
-def get_media_player_info(hass: HomeAssistant, entity_id: str):
+def get_media_player_info(hass: HomeAssistant, entity_id: str, entry_id: str = None):
     """Retrieve track, artist, media position, and last update time from media player."""
     player_state = hass.states.get(entity_id)
 
     if not player_state:
-        _LOGGER.error("Get Media Info: Media player entity not found.")
-        hass.async_create_task(update_lyrics_input_text(hass, "Media player entity not found", "", ""))
+        _LOGGER.error("Get Media Info: Media player entity not found (device: %s).", entry_id)
+        hass.async_create_task(update_lyrics_input_text(hass, "Media player entity not found", "", "", entry_id))
         return None, None, None, None  # Return empty values
 
     if player_state.state != "playing":
-        _LOGGER.info("Get Media Info: Media player is not playing. Waiting...")
-        hass.async_create_task(update_lyrics_input_text(hass, "Waiting for playback to start", "", ""))
+        _LOGGER.info("Get Media Info: Media player is not playing. Waiting... (device: %s)", entry_id)
+        hass.async_create_task(update_lyrics_input_text(hass, "Waiting for playback to start", "", "", entry_id))
         return None, None, None, None
 
     track = clean_track_name(player_state.attributes.get("media_title", ""))
@@ -485,23 +541,22 @@ def get_media_player_info(hass: HomeAssistant, entity_id: str):
     updated_at = player_state.attributes.get("media_position_updated_at")
 
     if not track or not artist:
-        _LOGGER.warning("Get Media Info: Missing track or artist information.")
-        hass.async_create_task(update_lyrics_input_text(hass, "Missing track or artist", "", ""))
+        _LOGGER.warning("Get Media Info: Missing track or artist information (device: %s).", entry_id)
+        hass.async_create_task(update_lyrics_input_text(hass, "Missing track or artist", "", "", entry_id))
         return None, None, None, None
 
     return track, artist, pos, updated_at
 
 
-async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, pos, updated_at, entity_id, audiofingerprint):
+async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, pos, updated_at, entity_id, audiofingerprint, entry_id: str = None):
     """Fetch lyrics for a given track and synchronize with playback."""
-    global ACTIVE_LYRICS_SYNC
-    global LAST_MEDIA_CONTENT_ID
-
-    _LOGGER.info("Fetch: Fetching lyrics for: %s %s", artist, track)
-    _LOGGER.info("Fetch: pos=%s, updated_at=%s, audiofingerprint=%s", pos, updated_at, audiofingerprint)
+    device_data = get_device_data(hass, entry_id)
+    
+    _LOGGER.info("Fetch: Fetching lyrics for: %s %s (device: %s)", artist, track, entry_id)
+    _LOGGER.info("Fetch: pos=%s, updated_at=%s, audiofingerprint=%s (device: %s)", pos, updated_at, audiofingerprint, entry_id)
 
     # Reset the current display first to show we're working on it
-    await update_lyrics_input_text(hass, "", "Searching for lyrics...", "")
+    await update_lyrics_input_text(hass, "", "Searching for lyrics...", "", entry_id)
 
     # Ensure parameters are valid
     if pos is None or updated_at is None:
@@ -510,19 +565,18 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
         if player_state and player_state.state == "playing":
             pos = player_state.attributes.get("media_position")
             updated_at = player_state.attributes.get("media_position_updated_at")
-            _LOGGER.info("Fetch: Retrieved current position: pos=%s, updated_at=%s", pos, updated_at)
+            _LOGGER.info("Fetch: Retrieved current position: pos=%s, updated_at=%s (device: %s)", pos, updated_at, entry_id)
         
         # If still not available, exit
         if pos is None or updated_at is None:
-            _LOGGER.error("Fetch: pos or updated_at is not initialized. Exiting lyrics sync.")
-            if ACTIVE_LYRICS_SYNC and ACTIVE_LYRICS_SYNC.active:
-                await ACTIVE_LYRICS_SYNC.stop()
+            _LOGGER.error("Fetch: pos or updated_at is not initialized. Exiting lyrics sync (device: %s).", entry_id)
+            active_lyrics_sync = device_data.get(DEVICE_DATA_LYRICS_SYNC)
+            if active_lyrics_sync and active_lyrics_sync.active:
+                await active_lyrics_sync.stop()
             return
 
-    # Check if the switch is enabled
-    if not hass.states.is_state("input_boolean.lyrics_enable", "on"):
-        _LOGGER.info("Fetch: Lyrics fetching is disabled by switch. Exiting.")
-        return
+    # Check if lyrics sync should proceed - always enabled now
+    # (No more device-specific enable/disable switch)
 
     # Get current media_content_id for tracking
     player_state = hass.states.get(entity_id)
@@ -535,31 +589,32 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
     should_stop_existing = True
     
     # For non-fingerprint calls, check if we already have lyrics running for this track
-    if not audiofingerprint and ACTIVE_LYRICS_SYNC and ACTIVE_LYRICS_SYNC.active:
+    active_lyrics_sync = device_data.get(DEVICE_DATA_LYRICS_SYNC)
+    if not audiofingerprint and active_lyrics_sync and active_lyrics_sync.active:
         # Check if we're already displaying lyrics for this track/artist
-        if (ACTIVE_LYRICS_SYNC.media_tracker and 
-            ACTIVE_LYRICS_SYNC.media_tracker.current_track == current_track and
-            ACTIVE_LYRICS_SYNC.media_tracker.current_artist == current_artist):
-            _LOGGER.info("Fetch: Already displaying lyrics for this track. Skipping.")
+        if (active_lyrics_sync.media_tracker and 
+            active_lyrics_sync.media_tracker.current_track == current_track and
+            active_lyrics_sync.media_tracker.current_artist == current_artist):
+            _LOGGER.info("Fetch: Already displaying lyrics for this track. Skipping (device: %s).", entry_id)
             should_stop_existing = False
             return
     
     # Stop any existing lyrics synchronization if needed
-    if should_stop_existing and ACTIVE_LYRICS_SYNC and ACTIVE_LYRICS_SYNC.active:
-        _LOGGER.info("Fetch: Stopping current lyrics session for new request.")
-        await ACTIVE_LYRICS_SYNC.stop()
+    if should_stop_existing and active_lyrics_sync and active_lyrics_sync.active:
+        _LOGGER.info("Fetch: Stopping current lyrics session for new request (device: %s).", entry_id)
+        await active_lyrics_sync.stop()
     
     # Update the last media content ID
-    LAST_MEDIA_CONTENT_ID = current_media_id
+    device_data[DEVICE_DATA_LAST_MEDIA_CONTENT_ID] = current_media_id
     
-    _LOGGER.info("Fetch: Start new session")
+    _LOGGER.info("Fetch: Start new session (device: %s)", entry_id)
     
     # Load lyrics provider
     lyrics_provider = [lrc_kit.QQProvider]
     provider = lrc_kit.ComboLyricsProvider(lyrics_provider)
     
     # Try with the combined artist name first
-    _LOGGER.info("Fetch: Searching for lyrics with combined artist name.")
+    _LOGGER.info("Fetch: Searching for lyrics with combined artist name (device: %s).", entry_id)
     search_request = await hass.async_add_executor_job(lrc_kit.SearchRequest, artist, track)
     lyrics_result = await hass.async_add_executor_job(provider.search, search_request)
     
@@ -572,7 +627,7 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
         contains_separator = any(sep in artist for sep in separators)
         
         if contains_separator:
-            _LOGGER.info("Fetch: No lyrics found with combined artist name. Trying individual artists.")
+            _LOGGER.info("Fetch: No lyrics found with combined artist name. Trying individual artists (device: %s).", entry_id)
             
             # Split the artist string using multiple possible separators
             individual_artists = artist
@@ -585,47 +640,47 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
             
             # Try each individual artist
             for single_artist in artist_list:
-                _LOGGER.info("Fetch: Trying with artist: %s", single_artist)
+                _LOGGER.info("Fetch: Trying with artist: %s (device: %s)", single_artist, entry_id)
                 search_request = await hass.async_add_executor_job(lrc_kit.SearchRequest, single_artist, track)
                 lyrics_result = await hass.async_add_executor_job(provider.search, search_request)
                 
                 if lyrics_result:
-                    _LOGGER.info("Fetch: Lyrics found with artist: %s", single_artist)
+                    _LOGGER.info("Fetch: Lyrics found with artist: %s (device: %s)", single_artist, entry_id)
                     break
     
     # If still no lyrics found
     if not lyrics_result:
-        _LOGGER.warning("Fetch: No lyrics found for '%s'.", track)
-        await update_lyrics_input_text(hass, "", "No lyrics found", "")
+        _LOGGER.warning("Fetch: No lyrics found for '%s' (device: %s).", track, entry_id)
+        await update_lyrics_input_text(hass, "", "No lyrics found", "", entry_id)
         return
 
-    _LOGGER.info("Fetch: Processing lyrics into timeline")
+    _LOGGER.info("Fetch: Processing lyrics into timeline (device: %s)", entry_id)
     timeline, lrc = lyricSplit(str(lyrics_result))
 
     if not timeline:
-        _LOGGER.error("Fetch: Lyrics have no timeline.")
-        await update_lyrics_input_text(hass, "", "Lyrics not synced", "")
+        _LOGGER.error("Fetch: Lyrics have no timeline (device: %s).", entry_id)
+        await update_lyrics_input_text(hass, "", "Lyrics not synced", "", entry_id)
         return
         
     # Debug information
-    _LOGGER.info("Fetch: Found %d lines of lyrics", len(lrc))
+    _LOGGER.info("Fetch: Found %d lines of lyrics (device: %s)", len(lrc), entry_id)
     if len(lrc) > 0:
-        _LOGGER.info("Fetch: First line: %s", lrc[0])
-        _LOGGER.info("Fetch: Last line: %s", lrc[-1])
+        _LOGGER.info("Fetch: First line: %s (device: %s)", lrc[0], entry_id)
+        _LOGGER.info("Fetch: Last line: %s (device: %s)", lrc[-1], entry_id)
 
     # Create lyrics synchronizer if it doesn't exist
-    if not ACTIVE_LYRICS_SYNC:
-        ACTIVE_LYRICS_SYNC = LyricsSynchronizer(hass)
+    if not device_data.get(DEVICE_DATA_LYRICS_SYNC):
+        device_data[DEVICE_DATA_LYRICS_SYNC] = LyricsSynchronizer(hass, entry_id)
     
     # Start synchronized lyrics display, passing the audiofingerprint flag
-    await ACTIVE_LYRICS_SYNC.start(entity_id, timeline, lrc, pos, updated_at, audiofingerprint)
+    await device_data[DEVICE_DATA_LYRICS_SYNC].start(entity_id, timeline, lrc, pos, updated_at, audiofingerprint)
 
 
 async def trigger_lyrics_lookup(hass: HomeAssistant, title: str, artist: str, play_offset_ms: int, process_begin: str, entry_id=None):
     """Trigger lyrics lookup based on a recognized song."""
 
     if not title or not artist:
-        _LOGGER.warning("Trigger Lyrics: Cannot trigger lyrics lookup: Missing title or artist.")
+        _LOGGER.warning("Trigger Lyrics: Cannot trigger lyrics lookup: Missing title or artist (device: %s).", entry_id)
         return
 
     _LOGGER.info("Trigger Lyrics (from tagging) -> Artist: %s Title: %s, Entry ID: %s", artist, title, entry_id)
@@ -640,88 +695,98 @@ async def trigger_lyrics_lookup(hass: HomeAssistant, title: str, artist: str, pl
     media_player = conf["media_player"]
 
     clean_track = clean_track_name(title)
-    await fetch_lyrics_for_track(hass, clean_track, artist, play_offset_ms/1000, process_begin, media_player, True)
+    await fetch_lyrics_for_track(hass, clean_track, artist, play_offset_ms/1000, process_begin, media_player, True, entry_id)
 
 
 async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
     """Main service handler: gets media info and fetches lyrics."""
     entity_id = call.data.get("entity_id")
     
+    # Try to find the matching device config for this entity
+    entry_id = None
+    if DOMAIN in hass.data:
+        for eid, config_data in hass.data[DOMAIN].items():
+            if (isinstance(config_data, dict) and 
+                config_data.get("media_player_entity") == entity_id):
+                entry_id = eid
+                break
+    
     # Get current track info
-    track, artist, pos, updated_at = get_media_player_info(hass, entity_id)
+    track, artist, pos, updated_at = get_media_player_info(hass, entity_id, entry_id)
     
     if not track or not artist:
-        _LOGGER.warning("Handle Fetch Lyrics: Missing track or artist information.")
+        _LOGGER.warning("Handle Fetch Lyrics: Missing track or artist information (device: %s).", entry_id)
         return
     
     # Fetch and display lyrics
-    await fetch_lyrics_for_track(hass, track, artist, pos, updated_at, entity_id, False)
+    await fetch_lyrics_for_track(hass, track, artist, pos, updated_at, entity_id, False, entry_id)
     
-    #async def monitor_playback(entity, old_state, new_state):
     async def monitor_playback_event(event):
         """Monitor media player state changes."""
         entity = event.data.get('entity_id')
         old_state = event.data.get('old_state')
         new_state = event.data.get('new_state')
-        global LAST_MEDIA_CONTENT_ID
-        global ACTIVE_LYRICS_SYNC
+        
+        device_data = get_device_data(hass, entry_id)
 
-        _LOGGER.debug("Monitor Playback: Media player state changed: %s -> %s", 
-                     old_state.state if old_state else "None", new_state.state)
+        _LOGGER.debug("Monitor Playback: Media player state changed: %s -> %s (device: %s)", 
+                     old_state.state if old_state else "None", new_state.state, entry_id)
 
         media_content_id = hass.states.get(entity).attributes.get("media_content_id", "")
 
         # Ignore updates if the state remains unchanged (e.g., volume changes)
         if old_state and new_state and old_state.state == new_state.state:
             if old_state.attributes.get("media_content_id") == media_content_id:
-                _LOGGER.debug("Monitor Playback: State unchanged and media_content_id unchanged. Ignoring attribute-only update.")
+                _LOGGER.debug("Monitor Playback: State unchanged and media_content_id unchanged. Ignoring attribute-only update (device: %s).", entry_id)
                 return
             
         # Only act if the player changes to 'playing' and it's not a radio station
         if new_state.state == "playing" and not media_content_id.startswith("library://radio"):
             
-            _LOGGER.debug("Monitor Playback: LAST_MEDIA_CONTENT_ID: %s", LAST_MEDIA_CONTENT_ID)
-            _LOGGER.debug("Monitor Playback: media_content_id: %s", media_content_id)
+            last_media_content_id = device_data.get(DEVICE_DATA_LAST_MEDIA_CONTENT_ID)
+            _LOGGER.debug("Monitor Playback: LAST_MEDIA_CONTENT_ID: %s (device: %s)", last_media_content_id, entry_id)
+            _LOGGER.debug("Monitor Playback: media_content_id: %s (device: %s)", media_content_id, entry_id)
 
             # Check if the media_content_id is different from the last one processed
-            if media_content_id and media_content_id != LAST_MEDIA_CONTENT_ID:
-                _LOGGER.info("Monitor Playback: Content has changed, not a radio station.")
+            if media_content_id and media_content_id != last_media_content_id:
+                _LOGGER.info("Monitor Playback: Content has changed, not a radio station (device: %s).", entry_id)
                 
                 # Stop any existing lyrics display
-                if ACTIVE_LYRICS_SYNC and ACTIVE_LYRICS_SYNC.active:
-                    await ACTIVE_LYRICS_SYNC.stop()
+                active_lyrics_sync = device_data.get(DEVICE_DATA_LYRICS_SYNC)
+                if active_lyrics_sync and active_lyrics_sync.active:
+                    await active_lyrics_sync.stop()
                 
-                await update_lyrics_input_text(hass, "", "", "")
-                track, artist, pos, updated_at = get_media_player_info(hass, entity)
-                _LOGGER.info("Monitor Playback: New Info -> Artist %s, Track %s, media_content_id %s", 
-                            artist, track, media_content_id)
-                _LOGGER.info("Monitor Playback: New Info -> pos %s, updated_at %s", pos, updated_at)
+                await update_lyrics_input_text(hass, "", "", "", entry_id)
+                track, artist, pos, updated_at = get_media_player_info(hass, entity, entry_id)
+                _LOGGER.info("Monitor Playback: New Info -> Artist %s, Track %s, media_content_id %s (device: %s)", 
+                            artist, track, media_content_id, entry_id)
+                _LOGGER.info("Monitor Playback: New Info -> pos %s, updated_at %s (device: %s)", pos, updated_at, entry_id)
 
                 # Call the lyrics function and update the last processed ID
                 if track and artist:
-                    _LOGGER.debug("Monitor Playback: Fetching lyrics for new track")
-                    LAST_MEDIA_CONTENT_ID = media_content_id
-                    hass.async_create_task(fetch_lyrics_for_track(hass, track, artist, pos, updated_at, entity, False))
+                    _LOGGER.debug("Monitor Playback: Fetching lyrics for new track (device: %s)", entry_id)
+                    device_data[DEVICE_DATA_LAST_MEDIA_CONTENT_ID] = media_content_id
+                    hass.async_create_task(fetch_lyrics_for_track(hass, track, artist, pos, updated_at, entity, False, entry_id))
             else:
-                _LOGGER.info("Monitor Playback: Track already processed. Skipping lyrics fetch.")
+                _LOGGER.info("Monitor Playback: Track already processed. Skipping lyrics fetch (device: %s).", entry_id)
         # Playing, radio
         elif new_state.state == "playing" and media_content_id.startswith("library://radio"):
-            LAST_MEDIA_CONTENT_ID = media_content_id # Radio station, don't fetch lyrics
-            _LOGGER.info("Monitor Playback: Radio station detected.")
+            device_data[DEVICE_DATA_LAST_MEDIA_CONTENT_ID] = media_content_id # Radio station, don't fetch lyrics
+            _LOGGER.info("Monitor Playback: Radio station detected (device: %s).", entry_id)
             
             # Stop any existing lyrics display
-            if ACTIVE_LYRICS_SYNC and ACTIVE_LYRICS_SYNC.active:
-                await ACTIVE_LYRICS_SYNC.stop()
+            active_lyrics_sync = device_data.get(DEVICE_DATA_LYRICS_SYNC)
+            if active_lyrics_sync and active_lyrics_sync.active:
+                await active_lyrics_sync.stop()
                 
-            await update_lyrics_input_text(hass, "", "", "")
+            await update_lyrics_input_text(hass, "", "", "", entry_id)
         else:
             # Not playing, but lyrics display will be handled by MediaTracker
-            _LOGGER.info("Monitor Playback: Media player is not playing.")
+            _LOGGER.info("Monitor Playback: Media player is not playing (device: %s).", entry_id)
 
     # Register listener for state change events
-    #hass.helpers.event.async_track_state_change(entity_id, monitor_playback)
     hass.helpers.event.async_track_state_change_event(entity_id, monitor_playback_event)
-    _LOGGER.debug("Registered state change listener for: %s", entity_id)
+    _LOGGER.debug("Registered state change listener for: %s (device: %s)", entity_id, entry_id)
 
 
 async def async_setup_lyrics_service(hass: HomeAssistant):

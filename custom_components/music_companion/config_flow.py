@@ -189,6 +189,10 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "tagging_switch_entity": tagging_switch,
                         "entry_type": ENTRY_TYPE_DEVICE,
                     }
+                    
+                    # Log the device creation for debugging
+                    _LOGGER.info("Creating device entry: %s with tagging switch: %s", device_name, tagging_switch)
+                    
                     return self.async_create_entry(title=device_name, data=data)
 
         # Get available assist satellites and media players
@@ -200,6 +204,10 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 assist_satellites.append(state.entity_id)
             elif state.entity_id.startswith("media_player."):
                 media_players.append(state.entity_id)
+
+        # Sort the lists for better user experience
+        assist_satellites.sort()
+        media_players.sort()
 
         data_schema = vol.Schema({
             vol.Required(CONF_DEVICE_NAME): cv.string,
