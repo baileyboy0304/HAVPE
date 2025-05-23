@@ -452,6 +452,13 @@ async def update_lyrics_input_text(hass: HomeAssistant, previous_line: str, curr
     """Update the text entities with the current lyrics lines."""
     lyrics_entities = get_device_lyrics_entities(hass, entry_id)
     
+    # Check if entities exist before trying to update them
+    entities_exist = all(hass.states.get(entity_id) for entity_id in lyrics_entities.values())
+    
+    if not entities_exist:
+        _LOGGER.warning("Lyrics entities not found for device %s. Expected: %s", entry_id, list(lyrics_entities.values()))
+        return
+    
     await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line1"], "value": previous_line})
     await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line2"], "value": current_line})
     await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line3"], "value": next_line})
@@ -705,11 +712,17 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
     # Try to find the matching device config for this entity
     entry_id = None
     if DOMAIN in hass.data:
+        _LOGGER.debug("Looking for device config matching entity: %s", entity_id)
         for eid, config_data in hass.data[DOMAIN].items():
+            _LOGGER.debug("Checking entry %s: %s", eid, config_data)
             if (isinstance(config_data, dict) and 
                 config_data.get("media_player_entity") == entity_id):
                 entry_id = eid
+                _LOGGER.debug("Found matching device config: %s", eid)
                 break
+        
+        if not entry_id:
+            _LOGGER.warning("No device config found for media player: %s", entity_id)
     
     # Get current track info
     track, artist, pos, updated_at = get_media_player_info(hass, entity_id, entry_id)
@@ -785,7 +798,7 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
             _LOGGER.info("Monitor Playback: Media player is not playing (device: %s).", entry_id)
 
     # Register listener for state change events
-    hass.helpers.event.async_track_state_change_event(entity_id, monitor_playback_event)
+    async_track_state_change_event(hass, [entity_id], monitor_playback_event)
     _LOGGER.debug("Registered state change listener for: %s (device: %s)", entity_id, entry_id)
 
 
