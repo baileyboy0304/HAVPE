@@ -449,12 +449,12 @@ def lyricSplit(lyrics):
 
 
 async def update_lyrics_input_text(hass: HomeAssistant, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
-    """Update the input_text entities with the current lyrics lines."""
+    """Update the text entities with the current lyrics lines."""
     lyrics_entities = get_device_lyrics_entities(hass, entry_id)
     
-    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line1"], "value": previous_line})
-    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line2"], "value": current_line})
-    await hass.services.async_call("input_text", "set_value", {"entity_id": lyrics_entities["line3"], "value": next_line})
+    await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line1"], "value": previous_line})
+    await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line2"], "value": current_line})
+    await hass.services.async_call("text", "set_value", {"entity_id": lyrics_entities["line3"], "value": next_line})
 
 
 def clean_track_name(track):

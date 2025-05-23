@@ -22,9 +22,9 @@ ENTRY_TYPE_MASTER = "master"
 ENTRY_TYPE_DEVICE = "device"
 
 # Device-specific entity templates
-DEVICE_LYRICS_LINE1_TEMPLATE = "input_text.{}_lyrics_line1"
-DEVICE_LYRICS_LINE2_TEMPLATE = "input_text.{}_lyrics_line2"
-DEVICE_LYRICS_LINE3_TEMPLATE = "input_text.{}_lyrics_line3"
+DEVICE_LYRICS_LINE1_TEMPLATE = "text.{}_lyrics_line1"
+DEVICE_LYRICS_LINE2_TEMPLATE = "text.{}_lyrics_line2"
+DEVICE_LYRICS_LINE3_TEMPLATE = "text.{}_lyrics_line3"
 
 # Spotify Auth Constants
 SPOTIFY_AUTH_CALLBACK_PATH = "/api/music_companion/spotify_callback"
