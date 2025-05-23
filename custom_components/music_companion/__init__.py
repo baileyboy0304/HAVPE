@@ -1,5 +1,4 @@
 import logging
-import asyncio
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -23,9 +22,6 @@ from .const import (
     CONF_SPOTIFY_PLAYLIST_NAME,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
-    DEVICE_LYRICS_LINE1_TEMPLATE,
-    DEVICE_LYRICS_LINE2_TEMPLATE,
-    DEVICE_LYRICS_LINE3_TEMPLATE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,110 +53,31 @@ def get_device_safe_name(device_name: str) -> str:
         return "default"
     return device_name.lower().replace(" ", "_").replace("-", "_")
 
-async def create_device_entities(hass: HomeAssistant, device_name: str, entry_id: str):
-    """Create device-specific input_text entities using Helper Services."""
+async def setup_device_notification(hass: HomeAssistant, device_name: str, entry_id: str):
+    """Show notification that device setup is complete."""
     safe_name = get_device_safe_name(device_name)
     
-    # Entity names and configurations
-    entities_to_create = [
-        {
-            "entity_id": f"{safe_name}_lyrics_line1",
-            "name": f"{device_name} Lyrics Line 1",
-            "icon": "mdi:music-note",
-        },
-        {
-            "entity_id": f"{safe_name}_lyrics_line2", 
-            "name": f"{device_name} Lyrics Line 2",
-            "icon": "mdi:music-note",
-        },
-        {
-            "entity_id": f"{safe_name}_lyrics_line3",
-            "name": f"{device_name} Lyrics Line 3", 
-            "icon": "mdi:music-note",
-        }
+    # Expected entity names
+    expected_entities = [
+        f"text.{safe_name}_lyrics_line1",
+        f"text.{safe_name}_lyrics_line2", 
+        f"text.{safe_name}_lyrics_line3"
     ]
     
-    created_entities = []
-    failed_entities = []
+    message = f"✅ **{device_name}** setup complete!\n\n" + \
+              "**Lyrics entities created:**\n" + \
+              "\n".join([f"• `{entity}`" for entity in expected_entities]) + \
+              "\n\nYour device is ready to display synchronized lyrics!"
     
-    for entity_config in entities_to_create:
-        entity_id = f"input_text.{entity_config['entity_id']}"
-        
-        # Check if entity already exists
-        if hass.states.get(entity_id):
-            _LOGGER.info(f"Entity {entity_id} already exists, skipping creation")
-            created_entities.append(entity_id)
-            continue
-        
-        try:
-            # Create input_text entity using Helper Services
-            _LOGGER.info(f"Creating entity: {entity_id}")
-            
-            await hass.services.async_call(
-                "input_text",
-                "create",
-                {
-                    "entity_id": entity_config["entity_id"],
-                    "name": entity_config["name"],  
-                    "max": 255,
-                    "min": 0,
-                    "initial": "",
-                    "icon": entity_config["icon"],
-                    "mode": "text"
-                },
-                blocking=True
-            )
-            
-            # Verify entity was created
-            await asyncio.sleep(0.5)  # Give HA time to create the entity
-            if hass.states.get(entity_id):
-                created_entities.append(entity_id)
-                _LOGGER.info(f"Successfully created entity: {entity_id}")
-            else:
-                failed_entities.append(entity_id)
-                _LOGGER.error(f"Entity creation appeared to succeed but entity not found: {entity_id}")
-                
-        except Exception as e:
-            failed_entities.append(entity_id)
-            _LOGGER.error(f"Failed to create entity {entity_id}: {e}")
-    
-    # Show setup notification
-    if created_entities and not failed_entities:
-        message = f"✅ Successfully created lyrics entities for **{device_name}**:\n\n" + \
-                 "\n".join([f"• `{entity}`" for entity in created_entities]) + \
-                 f"\n\nThe device is ready to display synchronized lyrics!"
-        
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "title": f"Device Setup Complete: {device_name}",
-                "message": message,
-                "notification_id": f"device_setup_success_{entry_id}"
-            }
-        )
-    elif failed_entities:
-        message = f"⚠️ **{device_name}** setup completed with issues:\n\n"
-        
-        if created_entities:
-            message += "**Created successfully:**\n" + \
-                      "\n".join([f"• `{entity}`" for entity in created_entities]) + "\n\n"
-        
-        message += "**Failed to create:**\n" + \
-                  "\n".join([f"• `{entity}`" for entity in failed_entities]) + \
-                  "\n\nCheck the logs for more details. You may need to restart Home Assistant."
-        
-        await hass.services.async_call(
-            "persistent_notification", 
-            "create",
-            {
-                "title": f"Device Setup Issues: {device_name}",
-                "message": message,
-                "notification_id": f"device_setup_issues_{entry_id}"
-            }
-        )
-    
-    return len(created_entities) == len(entities_to_create)
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": f"Device Ready: {device_name}",
+            "message": message,
+            "notification_id": f"device_setup_success_{entry_id}"
+        }
+    )
 
 async def async_setup(hass: HomeAssistant, config) -> bool:
     """Set up the Music Companion integration from yaml configuration."""
@@ -265,8 +182,11 @@ async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntr
         )
         return False
 
-    # Create device-specific entities
-    await create_device_entities(hass, device_name, config_entry.entry_id)
+    # Forward the entry to the text platform to create lyrics entities
+    await hass.config_entries.async_forward_entry_setup(config_entry, "text")
+
+    # Show success notification
+    await setup_device_notification(hass, device_name, config_entry.entry_id)
 
     _LOGGER.info("Device '%s' configured successfully (using event-based tagging)", device_name)
 
@@ -314,6 +234,9 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
             if lyrics_sync and lyrics_sync.active:
                 await lyrics_sync.stop()
                 _LOGGER.info("Stopped lyrics sync for device: %s", device_name)
+        
+        # Unload the text platform
+        await hass.config_entries.async_forward_entry_unload(config_entry, "text")
     
     # Remove this entry's data
     if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
