@@ -99,10 +99,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     _LOGGER.warning("Stored config entry in hass.data[%s][%s]", DOMAIN, config_entry.entry_id)
     _LOGGER.warning("Current hass.data[%s] keys: %s", DOMAIN, list(hass.data[DOMAIN].keys()))
 
-    if entry_type == ENTRY_TYPE_MASTER:
-        return await async_setup_master_entry(hass, config_entry)
-    else:
-        return await async_setup_device_entry(hass, config_entry)
+    try:
+        if entry_type == ENTRY_TYPE_MASTER:
+            result = await async_setup_master_entry(hass, config_entry)
+            _LOGGER.warning("Master setup result: %s", result)
+            return result
+        else:
+            result = await async_setup_device_entry(hass, config_entry)
+            _LOGGER.warning("Device setup result: %s", result)
+            return result
+    except Exception as e:
+        _LOGGER.warning("Exception in setup: %s", e)
+        raise
 
 async def async_setup_master_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the master configuration entry."""
