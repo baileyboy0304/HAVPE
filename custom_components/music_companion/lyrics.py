@@ -36,10 +36,13 @@ def get_device_data(hass: HomeAssistant, entry_id: str = None):
     if not entry_id:
         entry_id = "default"
     
-    if entry_id not in hass.data[DOMAIN]:
-        hass.data[DOMAIN][entry_id] = {}
+    # Create a separate runtime data key for this device
+    runtime_key = f"{entry_id}_runtime"
     
-    device_data = hass.data[DOMAIN][entry_id]
+    if runtime_key not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][runtime_key] = {}
+    
+    device_data = hass.data[DOMAIN][runtime_key]
     
     # Initialize device-specific data if not present
     if DEVICE_DATA_LYRICS_SYNC not in device_data:
@@ -59,7 +62,7 @@ def get_device_lyrics_entities(hass: HomeAssistant, entry_id: str = None):
         device_name = "default"
         if entry_id and entry_id != "default" and entry_id in hass.data.get(DOMAIN, {}):
             config_data = hass.data[DOMAIN][entry_id]
-            if isinstance(config_data, dict) and "device_name" in config_data:
+            if hasattr(config_data, 'get') and "device_name" in config_data:
                 # Convert device name to entity-friendly format
                 device_name = config_data["device_name"].lower().replace(" ", "_").replace("-", "_")
         
