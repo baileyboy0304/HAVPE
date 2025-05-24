@@ -3,6 +3,12 @@ import logging
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
+from homeassistant.helpers import device_registry as dr
 from .const import (
     DOMAIN, 
     CONF_ACRCLOUD_HOST,
@@ -17,8 +23,12 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_ASSIST_SATELLITE_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
+    CONF_DISPLAY_DEVICE,
+    CONF_USE_DISPLAY_DEVICE,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
+    BROWSERMOD_DOMAIN,
+    REMOTE_ASSIST_DISPLAY_DOMAIN,
     DEFAULT_SPOTIFY_PLAYLIST_NAME
 )
 
@@ -40,6 +50,51 @@ def infer_tagging_switch_from_assist_satellite(hass, assist_satellite_entity):
         return None, f"Tagging switch '{tagging_switch}' not found"
     
     return tagging_switch, None
+
+def get_devices_for_domain(hass: HomeAssistant, domain: str):
+    """Get devices for a specific domain."""
+    device_registry = dr.async_get(hass)
+    return [
+        device for device in device_registry.devices.values()
+        if any(entry.domain == domain for entry in device.config_entries)
+    ]
+
+def get_display_device_options(hass: HomeAssistant):
+    """Get available display devices for selection."""
+    display_devices = {}
+    
+    # Add Browser Mod devices
+    try:
+        browser_mod_devices = get_devices_for_domain(hass, BROWSERMOD_DOMAIN)
+        for device in browser_mod_devices:
+            display_devices[device.id] = f"Browser Mod: {device.name or device.id}"
+    except Exception as e:
+        _LOGGER.debug("Error getting Browser Mod devices: %s", e)
+    
+    # Add Remote Assist Display devices
+    try:
+        remote_display_devices = get_devices_for_domain(hass, REMOTE_ASSIST_DISPLAY_DOMAIN)
+        for device in remote_display_devices:
+            display_devices[device.id] = f"Remote Display: {device.name or device.id}"
+    except Exception as e:
+        _LOGGER.debug("Error getting Remote Assist Display devices: %s", e)
+    
+    # Add browser_mod service-based displays from hass data if available
+    try:
+        hass_data = hass.data.get(BROWSERMOD_DOMAIN, {})
+        browser_ids = hass_data.get("browsers", {})
+        for browser_id, browser_info in browser_ids.items():
+            if browser_id not in display_devices:
+                browser_name = browser_info.get("name", browser_id)
+                display_devices[browser_id] = f"Browser: {browser_name}"
+    except Exception as e:
+        _LOGGER.debug("Error getting browser mod browsers: %s", e)
+    
+    # If no devices found, add a placeholder
+    if not display_devices:
+        display_devices["none"] = "No display devices available"
+    
+    return display_devices
 
 class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -155,6 +210,8 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_name = user_input[CONF_DEVICE_NAME]
             assist_satellite = user_input[CONF_ASSIST_SATELLITE_ENTITY]
             media_player = user_input[CONF_MEDIA_PLAYER_ENTITY]
+            use_display_device = user_input.get(CONF_USE_DISPLAY_DEVICE, False)
+            display_device = user_input.get(CONF_DISPLAY_DEVICE) if use_display_device else None
             
             # Check for duplicate device names
             for entry in self._async_current_entries():
@@ -179,6 +236,17 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not self.hass.states.get(media_player):
                     errors[CONF_MEDIA_PLAYER_ENTITY] = "media_player_not_found"
                 
+                # Validate display device if selected
+                if use_display_device and display_device and display_device != "none":
+                    # Basic validation - check if device exists
+                    device_registry = dr.async_get(self.hass)
+                    if display_device not in [device.id for device in device_registry.devices.values()]:
+                        # Check if it's a browser_mod browser ID
+                        browser_mod_data = self.hass.data.get(BROWSERMOD_DOMAIN, {})
+                        browsers = browser_mod_data.get("browsers", {})
+                        if display_device not in browsers:
+                            errors[CONF_DISPLAY_DEVICE] = "display_device_not_found"
+                
                 if not errors:
                     # Extract base name for storage
                     base_name = assist_satellite[17:-17] if assist_satellite.endswith("_assist_satellite") else ""
@@ -189,6 +257,7 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "media_player_entity": media_player,
                         "base_name": base_name,
                         "tagging_enabled": tagging_enabled,
+                        "use_display_device": use_display_device,
                         "entry_type": ENTRY_TYPE_DEVICE,
                     }
                     
@@ -196,8 +265,13 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if tagging_enabled and tagging_switch:
                         data["tagging_switch_entity"] = tagging_switch
                     
+                    # Only add display device if enabled and valid
+                    if use_display_device and display_device and display_device != "none":
+                        data[CONF_DISPLAY_DEVICE] = display_device
+                    
                     # Log the device creation for debugging
-                    _LOGGER.info("Creating device entry: %s with tagging enabled: %s", device_name, tagging_enabled)
+                    _LOGGER.info("Creating device entry: %s with tagging enabled: %s, display device: %s", 
+                               device_name, tagging_enabled, display_device if use_display_device else "None")
                     if tagging_enabled:
                         _LOGGER.info("Tagging switch: %s", tagging_switch)
                     else:
@@ -219,10 +293,21 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assist_satellites.sort()
         media_players.sort()
 
+        # Get display device options
+        display_devices = get_display_device_options(self.hass)
+        display_options = [{"value": key, "label": value} for key, value in display_devices.items()]
+
         data_schema = vol.Schema({
             vol.Required(CONF_DEVICE_NAME): cv.string,
             vol.Required(CONF_ASSIST_SATELLITE_ENTITY): vol.In(assist_satellites),
             vol.Required(CONF_MEDIA_PLAYER_ENTITY): vol.In(media_players),
+            vol.Optional(CONF_USE_DISPLAY_DEVICE, default=False): cv.boolean,
+            vol.Optional(CONF_DISPLAY_DEVICE): SelectSelector(
+                SelectSelectorConfig(
+                    options=display_options,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
         })
 
         return self.async_show_form(step_id="device", data_schema=data_schema, errors=errors)

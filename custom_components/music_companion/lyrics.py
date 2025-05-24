@@ -15,7 +15,10 @@ from .const import (
     DEVICE_DATA_LYRICS_ENTITIES,
     DEVICE_LYRICS_LINE1_TEMPLATE,
     DEVICE_LYRICS_LINE2_TEMPLATE,
-    DEVICE_LYRICS_LINE3_TEMPLATE
+    DEVICE_LYRICS_LINE3_TEMPLATE,
+    CONF_DISPLAY_DEVICE,
+    CONF_USE_DISPLAY_DEVICE,
+    BROWSERMOD_DOMAIN
 )
 from homeassistant.helpers.event import async_track_state_change_event
 from .media_tracker import MediaTracker
@@ -75,6 +78,17 @@ def get_device_lyrics_entities(hass: HomeAssistant, entry_id: str = None):
     return device_data[DEVICE_DATA_LYRICS_ENTITIES]
 
 
+def get_device_config_data(hass: HomeAssistant, entry_id: str = None):
+    """Get device configuration data."""
+    if not entry_id or DOMAIN not in hass.data:
+        return None
+    
+    config_data = hass.data[DOMAIN].get(entry_id)
+    if hasattr(config_data, 'get'):
+        return config_data
+    return None
+
+
 class LyricsSynchronizer:
     """Manages lyrics synchronization using MediaTracker."""
     
@@ -120,8 +134,8 @@ class LyricsSynchronizer:
                         self.current_track, self.current_artist, self.entry_id)
         
         # Immediately show "Loading lyrics..." message
-        await update_lyrics_input_text(self.hass, "", "Loading lyrics...", 
-                                     self.lyrics[0] if lyrics and len(lyrics) > 0 else "", self.entry_id)
+        await update_lyrics_display(self.hass, "", "Loading lyrics...", 
+                                  self.lyrics[0] if lyrics and len(lyrics) > 0 else "", self.entry_id)
         
         # Initialize media tracker with callbacks, passing radio source flag
         self.media_tracker = MediaTracker(
@@ -165,7 +179,7 @@ class LyricsSynchronizer:
                             current_line = lyrics[i-1]
                             next_line = lyrics[i] if i < len(lyrics) else ""
                             
-                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                            await update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                             break
                 
                 # If we didn't find an upcoming line, or this isn't a radio source,
@@ -183,7 +197,7 @@ class LyricsSynchronizer:
                             current_line = lyrics[i-1]
                             next_line = lyrics[i] if i < len(lyrics) else ""
                             
-                            await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                            await update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                             break
             
             # If we couldn't find the right position in the timeline, 
@@ -192,9 +206,9 @@ class LyricsSynchronizer:
                 # Show first few lines immediately
                 _LOGGER.info("LyricsSynchronizer: No matching position found, showing first lines (device: %s)", self.entry_id)
                 if len(lyrics) > 1:
-                    await update_lyrics_input_text(self.hass, "", lyrics[0], lyrics[1], self.entry_id)
+                    await update_lyrics_display(self.hass, "", lyrics[0], lyrics[1], self.entry_id)
                 else:
-                    await update_lyrics_input_text(self.hass, "", lyrics[0], "", self.entry_id)
+                    await update_lyrics_display(self.hass, "", lyrics[0], "", self.entry_id)
         
         # Start tracking
         await self.media_tracker.start_tracking()
@@ -218,7 +232,7 @@ class LyricsSynchronizer:
             self.media_tracker = None
         
         # Clear display
-        await update_lyrics_input_text(self.hass, "", "", "", self.entry_id)
+        await update_lyrics_display(self.hass, "", "", "", self.entry_id)
         
         _LOGGER.info("LyricsSynchronizer: Stopped (device: %s)", self.entry_id)
     
@@ -259,7 +273,7 @@ class LyricsSynchronizer:
                     
                     # Update display
                     asyncio.create_task(
-                        update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                        update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                     )
                     
                     _LOGGER.debug("LyricsSynchronizer: Updated to line %d at %f ms (device: %s)", 
@@ -274,7 +288,7 @@ class LyricsSynchronizer:
             if self.current_line_index != -1:
                 self.current_line_index = -1
                 asyncio.create_task(
-                    update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
+                    update_lyrics_display(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
                 )
     
     def handle_track_change(self, is_track_change=True):
@@ -311,7 +325,7 @@ class LyricsSynchronizer:
                         next_line = self.lyrics[i] if i < len(self.lyrics) else ""
                         
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                            update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                         )
                         
                         _LOGGER.info("LyricsSynchronizer: Resynced to line %d at %f ms (device: %s)", 
@@ -322,12 +336,12 @@ class LyricsSynchronizer:
                 if self.current_line_index == -1:
                     if position_ms < self.timeline[0]:
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
+                            update_lyrics_display(self.hass, "", "Waiting for first line...", self.lyrics[0], self.entry_id)
                         )
                     else:
                         # We might be past the end
                         asyncio.create_task(
-                            update_lyrics_input_text(self.hass, "", "Lyrics finished", "", self.entry_id)
+                            update_lyrics_display(self.hass, "", "Lyrics finished", "", self.entry_id)
                         )
     
     async def _force_update_task(self):
@@ -370,7 +384,7 @@ class LyricsSynchronizer:
                                     next_line = self.lyrics[i] if i < len(self.lyrics) else ""
                                     
                                     # Force update the display
-                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                                    await update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                                     self.last_update_time = current_time
                                     _LOGGER.debug("LyricsSynchronizer: Force updated to line %d (%.1f ms, device: %s)", 
                                                 i-1, position_ms, self.entry_id)
@@ -381,12 +395,12 @@ class LyricsSynchronizer:
                             if not found_line:
                                 if position_ms < self.timeline[0]:
                                     # Before first line
-                                    await update_lyrics_input_text(self.hass, "", 
-                                                                "Coming up...", self.lyrics[0], self.entry_id)
+                                    await update_lyrics_display(self.hass, "", 
+                                                              "Coming up...", self.lyrics[0], self.entry_id)
                                 elif position_ms >= self.timeline[-1]:
                                     # Past the last line
-                                    await update_lyrics_input_text(self.hass, 
-                                                                self.lyrics[-1], "End of lyrics", "", self.entry_id)
+                                    await update_lyrics_display(self.hass, 
+                                                              self.lyrics[-1], "End of lyrics", "", self.entry_id)
                                 else:
                                     # We should have found a line - try to recover
                                     # Find the closest line
@@ -400,13 +414,13 @@ class LyricsSynchronizer:
                                     current_line = self.lyrics[closest_idx]
                                     next_line = self.lyrics[closest_idx+1] if closest_idx < len(self.lyrics)-1 else ""
                                     
-                                    await update_lyrics_input_text(self.hass, previous_line, current_line, next_line, self.entry_id)
+                                    await update_lyrics_display(self.hass, previous_line, current_line, next_line, self.entry_id)
                                 
                                 self.last_update_time = current_time
                         else:
                             # If we have lyrics but no timeline yet, or in initialization
                             if len(self.lyrics) > 0:
-                                await update_lyrics_input_text(self.hass, "", "Loading lyrics...", self.lyrics[0], self.entry_id)
+                                await update_lyrics_display(self.hass, "", "Loading lyrics...", self.lyrics[0], self.entry_id)
                                 self.last_update_time = current_time
         except asyncio.CancelledError:
             _LOGGER.debug("LyricsSynchronizer: Force update task cancelled (device: %s)", self.entry_id)
@@ -449,6 +463,103 @@ def lyricSplit(lyrics):
                 continue
 
     return timeline, lrc
+
+
+async def update_lyrics_display(hass: HomeAssistant, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
+    """Update the lyrics display - either text entities or display device."""
+    config_data = get_device_config_data(hass, entry_id)
+    
+    # Check if device is configured to use display device
+    if config_data and config_data.get(CONF_USE_DISPLAY_DEVICE, False):
+        display_device = config_data.get(CONF_DISPLAY_DEVICE)
+        if display_device and display_device != "none":
+            await send_lyrics_to_display_device(hass, display_device, previous_line, current_line, next_line, entry_id)
+            return
+    
+    # Fallback to text entities
+    await update_lyrics_input_text(hass, previous_line, current_line, next_line, entry_id)
+
+
+async def send_lyrics_to_display_device(hass: HomeAssistant, display_device: str, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
+    """Send lyrics to a display device using browser_mod or other display service."""
+    try:
+        # Format lyrics for display
+        lyrics_html = f"""
+        <div style="
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        ">
+            <div style="margin-bottom: 10px; opacity: 0.6; font-size: 18px;">
+                {previous_line}
+            </div>
+            <div style="font-size: 24px; font-weight: bold; margin: 10px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
+                {current_line}
+            </div>
+            <div style="margin-top: 10px; opacity: 0.6; font-size: 18px;">
+                {next_line}
+            </div>
+        </div>
+        """
+        
+        # Try browser_mod first
+        if BROWSERMOD_DOMAIN in hass.data:
+            try:
+                await hass.services.async_call(
+                    BROWSERMOD_DOMAIN,
+                    "popup",
+                    {
+                        "deviceID": display_device,
+                        "title": "Music Companion Lyrics",
+                        "content": lyrics_html,
+                        "size": "fullscreen",
+                        "auto_close": False,
+                        "dismissable": True,
+                    }
+                )
+                _LOGGER.debug("Sent lyrics to browser_mod display device: %s (device: %s)", display_device, entry_id)
+                return
+            except Exception as e:
+                _LOGGER.debug("Failed to send lyrics via browser_mod popup: %s", e)
+                
+                # Try alternative browser_mod approach
+                try:
+                    await hass.services.async_call(
+                        BROWSERMOD_DOMAIN,
+                        "navigate",
+                        {
+                            "deviceID": display_device,
+                            "path": f"/lovelace/music-companion-lyrics?html={lyrics_html}",
+                        }
+                    )
+                    _LOGGER.debug("Sent lyrics to browser_mod via navigate: %s (device: %s)", display_device, entry_id)
+                    return
+                except Exception as e2:
+                    _LOGGER.debug("Failed to send lyrics via browser_mod navigate: %s", e2)
+        
+        # Try persistent notification as fallback for display devices
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Music Companion Lyrics",
+                "message": f"**{current_line}**\n\n↑ {previous_line}\n↓ {next_line}",
+                "notification_id": f"lyrics_display_{entry_id or 'default'}"
+            }
+        )
+        _LOGGER.debug("Sent lyrics via persistent notification for display device: %s (device: %s)", display_device, entry_id)
+        
+    except Exception as e:
+        _LOGGER.error("Failed to send lyrics to display device %s (device: %s): %s", display_device, entry_id, e)
+        # Fallback to text entities
+        await update_lyrics_input_text(hass, previous_line, current_line, next_line, entry_id)
 
 
 async def update_lyrics_input_text(hass: HomeAssistant, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
@@ -537,12 +648,12 @@ def get_media_player_info(hass: HomeAssistant, entity_id: str, entry_id: str = N
 
     if not player_state:
         _LOGGER.error("Get Media Info: Media player entity not found (device: %s).", entry_id)
-        hass.async_create_task(update_lyrics_input_text(hass, "Media player entity not found", "", "", entry_id))
+        hass.async_create_task(update_lyrics_display(hass, "Media player entity not found", "", "", entry_id))
         return None, None, None, None  # Return empty values
 
     if player_state.state != "playing":
         _LOGGER.info("Get Media Info: Media player is not playing. Waiting... (device: %s)", entry_id)
-        hass.async_create_task(update_lyrics_input_text(hass, "Waiting for playback to start", "", "", entry_id))
+        hass.async_create_task(update_lyrics_display(hass, "Waiting for playback to start", "", "", entry_id))
         return None, None, None, None
 
     track = clean_track_name(player_state.attributes.get("media_title", ""))
@@ -552,7 +663,7 @@ def get_media_player_info(hass: HomeAssistant, entity_id: str, entry_id: str = N
 
     if not track or not artist:
         _LOGGER.warning("Get Media Info: Missing track or artist information (device: %s).", entry_id)
-        hass.async_create_task(update_lyrics_input_text(hass, "Missing track or artist", "", "", entry_id))
+        hass.async_create_task(update_lyrics_display(hass, "Missing track or artist", "", "", entry_id))
         return None, None, None, None
 
     return track, artist, pos, updated_at
@@ -566,7 +677,7 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
     _LOGGER.info("Fetch: pos=%s, updated_at=%s, audiofingerprint=%s (device: %s)", pos, updated_at, audiofingerprint, entry_id)
 
     # Reset the current display first to show we're working on it
-    await update_lyrics_input_text(hass, "", "Searching for lyrics...", "", entry_id)
+    await update_lyrics_display(hass, "", "Searching for lyrics...", "", entry_id)
 
     # Ensure parameters are valid
     if pos is None or updated_at is None:
@@ -661,7 +772,7 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
     # If still no lyrics found
     if not lyrics_result:
         _LOGGER.warning("Fetch: No lyrics found for '%s' (device: %s).", track, entry_id)
-        await update_lyrics_input_text(hass, "", "No lyrics found", "", entry_id)
+        await update_lyrics_display(hass, "", "No lyrics found", "", entry_id)
         return
 
     _LOGGER.info("Fetch: Processing lyrics into timeline (device: %s)", entry_id)
@@ -669,7 +780,7 @@ async def fetch_lyrics_for_track(hass: HomeAssistant, track: str, artist: str, p
 
     if not timeline:
         _LOGGER.error("Fetch: Lyrics have no timeline (device: %s).", entry_id)
-        await update_lyrics_input_text(hass, "", "Lyrics not synced", "", entry_id)
+        await update_lyrics_display(hass, "", "Lyrics not synced", "", entry_id)
         return
         
     # Debug information
@@ -786,7 +897,7 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
                 if active_lyrics_sync and active_lyrics_sync.active:
                     await active_lyrics_sync.stop()
                 
-                await update_lyrics_input_text(hass, "", "", "", entry_id)
+                await update_lyrics_display(hass, "", "", "", entry_id)
                 track, artist, pos, updated_at = get_media_player_info(hass, entity, entry_id)
                 _LOGGER.info("Monitor Playback: New Info -> Artist %s, Track %s, media_content_id %s (device: %s)", 
                             artist, track, media_content_id, entry_id)
@@ -809,7 +920,7 @@ async def handle_fetch_lyrics(hass: HomeAssistant, call: ServiceCall):
             if active_lyrics_sync and active_lyrics_sync.active:
                 await active_lyrics_sync.stop()
                 
-            await update_lyrics_input_text(hass, "", "", "", entry_id)
+            await update_lyrics_display(hass, "", "", "", entry_id)
         else:
             # Not playing, but lyrics display will be handled by MediaTracker
             _LOGGER.info("Monitor Playback: Media player is not playing (device: %s).", entry_id)

@@ -20,6 +20,8 @@ from .const import (
     CONF_SPOTIFY_PLAYLIST_ID,
     CONF_SPOTIFY_CREATE_PLAYLIST,
     CONF_SPOTIFY_PLAYLIST_NAME,
+    CONF_DISPLAY_DEVICE,
+    CONF_USE_DISPLAY_DEVICE,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
 )
@@ -53,7 +55,7 @@ def get_device_safe_name(device_name: str) -> str:
         return "default"
     return device_name.lower().replace(" ", "_").replace("-", "_")
 
-async def setup_device_notification(hass: HomeAssistant, device_name: str, entry_id: str):
+async def setup_device_notification(hass: HomeAssistant, device_name: str, entry_id: str, config_data: dict):
     """Show notification that device setup is complete."""
     safe_name = get_device_safe_name(device_name)
     
@@ -64,10 +66,29 @@ async def setup_device_notification(hass: HomeAssistant, device_name: str, entry
         f"text.{safe_name}_lyrics_line3"
     ]
     
-    message = f"✅ **{device_name}** setup complete!\n\n" + \
-              "**Lyrics entities created:**\n" + \
-              "\n".join([f"• `{entity}`" for entity in expected_entities]) + \
-              "\n\nYour device is ready to display synchronized lyrics!"
+    # Check display device configuration
+    use_display_device = config_data.get("use_display_device", False)
+    display_device = config_data.get("display_device") if use_display_device else None
+    tagging_enabled = config_data.get("tagging_enabled", False)
+    
+    # Build message based on configuration
+    message = f"✅ **{device_name}** setup complete!\n\n"
+    
+    if use_display_device and display_device and display_device != "none":
+        message += f"**Display Device:** {display_device}\n"
+        message += "Lyrics will be shown on the configured display device.\n\n"
+        message += "**Fallback text entities created:**\n" + \
+                  "\n".join([f"• `{entity}`" for entity in expected_entities])
+    else:
+        message += "**Lyrics entities created:**\n" + \
+                  "\n".join([f"• `{entity}`" for entity in expected_entities])
+    
+    if tagging_enabled:
+        message += "\n\n🎤 **Audio tagging enabled** - Device can identify songs from audio"
+    else:
+        message += "\n\n📺 **Lyrics display only** - Device shows lyrics but cannot identify audio"
+    
+    message += "\n\nYour device is ready to display synchronized lyrics!"
     
     await hass.services.async_call(
         "persistent_notification",
@@ -199,7 +220,7 @@ async def async_setup_device_entry(hass: HomeAssistant, config_entry: ConfigEntr
     await hass.config_entries.async_forward_entry_setups(config_entry, ["text"])
 
     # Show success notification
-    await setup_device_notification(hass, device_name, config_entry.entry_id)
+    await setup_device_notification(hass, device_name, config_entry.entry_id, config_entry.data)
 
     _LOGGER.info("Device '%s' configured successfully (using event-based tagging)", device_name)
 

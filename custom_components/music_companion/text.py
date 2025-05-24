@@ -7,7 +7,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, CONF_DEVICE_NAME, CONF_MEDIA_PLAYER_ENTITY, CONF_ASSIST_SATELLITE_ENTITY
+from .const import (
+    DOMAIN, 
+    CONF_DEVICE_NAME, 
+    CONF_MEDIA_PLAYER_ENTITY, 
+    CONF_ASSIST_SATELLITE_ENTITY,
+    CONF_DISPLAY_DEVICE,
+    CONF_USE_DISPLAY_DEVICE
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,42 +33,59 @@ async def async_setup_entry(
     
     safe_name = device_name.lower().replace(" ", "_").replace("-", "_")
     
-    # Create text entities for lyrics
+    # Check if device is configured to use display device
+    use_display_device = config_entry.data.get(CONF_USE_DISPLAY_DEVICE, False)
+    display_device = config_entry.data.get(CONF_DISPLAY_DEVICE) if use_display_device else None
+    
+    entities = []
+    
+    # Always create text entities (they serve as fallback and for manual access)
+    # But they may not be actively used if display device is configured
     text_entities = [
         LyricsTextEntity(
             config_entry,
             "line1",
             f"{device_name} Lyrics Line 1",
-            f"{safe_name}_lyrics_line1"
+            f"{safe_name}_lyrics_line1",
+            use_display_device
         ),
         LyricsTextEntity(
             config_entry,
             "line2", 
             f"{device_name} Lyrics Line 2",
-            f"{safe_name}_lyrics_line2"
+            f"{safe_name}_lyrics_line2",
+            use_display_device
         ),
         LyricsTextEntity(
             config_entry,
             "line3",
             f"{device_name} Lyrics Line 3", 
-            f"{safe_name}_lyrics_line3"
+            f"{safe_name}_lyrics_line3",
+            use_display_device
         ),
     ]
     
+    entities.extend(text_entities)
+    
     # Create device info sensor
     device_info_sensor = MusicCompanionDeviceSensor(config_entry)
+    entities.append(device_info_sensor)
     
     # Add all entities
-    entities = text_entities + [device_info_sensor]
     async_add_entities(entities)
     
-    _LOGGER.info("Created lyrics text entities and device sensor for device: %s", device_name)
+    # Log appropriate message based on configuration
+    if use_display_device and display_device and display_device != "none":
+        _LOGGER.info("Created lyrics text entities (fallback) and device sensor for device: %s (primary display: %s)", 
+                    device_name, display_device)
+    else:
+        _LOGGER.info("Created lyrics text entities and device sensor for device: %s", device_name)
 
 
 class LyricsTextEntity(TextEntity):
     """Text entity for displaying lyrics lines."""
     
-    def __init__(self, config_entry: ConfigEntry, line_type: str, name: str, unique_id: str):
+    def __init__(self, config_entry: ConfigEntry, line_type: str, name: str, unique_id: str, use_display_device: bool = False):
         """Initialize the lyrics text entity."""
         self._config_entry = config_entry
         self._line_type = line_type
@@ -72,6 +96,7 @@ class LyricsTextEntity(TextEntity):
         self._attr_mode = "text"
         self._attr_native_max = 255
         self._attr_native_min = 0
+        self._use_display_device = use_display_device
         
         # Set the entity ID we want
         device_name = config_entry.data.get(CONF_DEVICE_NAME, "Music Companion Device")
@@ -96,6 +121,23 @@ class LyricsTextEntity(TextEntity):
     def entity_id(self, value: str) -> None:
         """Set the entity ID."""
         self._entity_id = value
+    
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return additional state attributes."""
+        attrs = {}
+        
+        # Add information about display device usage
+        if self._use_display_device:
+            display_device = self._config_entry.data.get(CONF_DISPLAY_DEVICE)
+            attrs["display_mode"] = "display_device"
+            attrs["display_device"] = display_device
+            attrs["primary_output"] = False  # Text entities are fallback when display device is used
+        else:
+            attrs["display_mode"] = "text_entities"
+            attrs["primary_output"] = True  # Text entities are primary output
+        
+        return attrs
     
     async def async_set_value(self, value: str) -> None:
         """Set the text value."""
@@ -125,6 +167,10 @@ class MusicCompanionDeviceSensor(SensorEntity):
         # Set the entity ID we want
         self._entity_id = f"sensor.music_companion_{safe_name}"
         
+        # Check display device configuration
+        use_display_device = config_entry.data.get(CONF_USE_DISPLAY_DEVICE, False)
+        display_device = config_entry.data.get(CONF_DISPLAY_DEVICE) if use_display_device else None
+        
         # Expose the lyrics entities and other device info as attributes
         self._attr_extra_state_attributes = {
             "lyrics_line1": f"text.{safe_name}_lyrics_line1",
@@ -134,7 +180,11 @@ class MusicCompanionDeviceSensor(SensorEntity):
             "assist_satellite": config_entry.data.get(CONF_ASSIST_SATELLITE_ENTITY),
             "device_name": device_name,
             "safe_name": safe_name,
-            "entry_id": config_entry.entry_id
+            "entry_id": config_entry.entry_id,
+            "use_display_device": use_display_device,
+            "display_device": display_device,
+            "display_mode": "display_device" if use_display_device and display_device else "text_entities",
+            "tagging_enabled": config_entry.data.get("tagging_enabled", False),
         }
         
         # Device information

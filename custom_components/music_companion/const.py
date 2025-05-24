@@ -18,6 +18,8 @@ CONF_ASSIST_SATELLITE_ENTITY = "assist_satellite_entity"
 CONF_MEDIA_PLAYER_ENTITY = "media_player_entity"
 CONF_TAGGING_ENABLED = "tagging_enabled"
 CONF_TAGGING_SWITCH_ENTITY = "tagging_switch_entity"
+CONF_DISPLAY_DEVICE = "display_device"
+CONF_USE_DISPLAY_DEVICE = "use_display_device"
 
 # Entry Types
 ENTRY_TYPE_MASTER = "master"
@@ -27,6 +29,10 @@ ENTRY_TYPE_DEVICE = "device"
 DEVICE_LYRICS_LINE1_TEMPLATE = "text.{}_lyrics_line1"
 DEVICE_LYRICS_LINE2_TEMPLATE = "text.{}_lyrics_line2"
 DEVICE_LYRICS_LINE3_TEMPLATE = "text.{}_lyrics_line3"
+
+# Display device constants
+BROWSERMOD_DOMAIN = "browser_mod"
+REMOTE_ASSIST_DISPLAY_DOMAIN = "remote_assist_display"
 
 # Spotify Auth Constants
 SPOTIFY_AUTH_CALLBACK_PATH = "/api/music_companion/spotify_callback"
