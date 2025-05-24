@@ -64,10 +64,10 @@ def get_display_device_options(hass: HomeAssistant):
     """Get available View Assist display devices for selection."""
     display_devices = {}
     
-    # Look for View Assist display devices
+    # Look for View Assist display devices (exactly like View Assist does it)
     try:
-        # Check View Assist domain data for browser IDs
-        view_assist_data = hass.data.get(VIEW_ASSIST_DOMAIN, {})
+        # Check View Assist domain data for browser IDs - this is the main source
+        view_assist_data = hass.data.setdefault(VIEW_ASSIST_DOMAIN, {})
         va_browser_ids = view_assist_data.get("va_browser_ids", {})
         
         _LOGGER.debug("View Assist browser IDs found: %s", list(va_browser_ids.keys()))
@@ -78,16 +78,17 @@ def get_display_device_options(hass: HomeAssistant):
     except Exception as e:
         _LOGGER.debug("Error getting View Assist browser IDs: %s", e)
     
-    # Add Remote Assist Display devices
+    # Add Remote Assist Display devices from device registry
     try:
         remote_display_devices = get_devices_for_domain(hass, REMOTE_ASSIST_DISPLAY_DOMAIN)
         _LOGGER.debug("Found %d Remote Assist Display devices", len(remote_display_devices))
         for device in remote_display_devices:
-            display_devices[device.id] = f"Remote Display: {device.name or device.id}"
+            if device.id not in display_devices:
+                display_devices[device.id] = f"Remote Display: {device.name or device.id}"
     except Exception as e:
         _LOGGER.debug("Error getting Remote Assist Display devices: %s", e)
     
-    # Check for View Assist entities to find display devices
+    # Check for View Assist entities to find display devices (additional check)
     try:
         entity_registry = er.async_get(hass)
         for entity in entity_registry.entities.values():
@@ -99,7 +100,14 @@ def get_display_device_options(hass: HomeAssistant):
     except Exception as e:
         _LOGGER.debug("Error checking View Assist entities: %s", e)
     
-    # Always add none option as default
+    # Add current setting if not already in list (for existing configs)
+    # This matches View Assist's approach for backwards compatibility
+    
+    # Set a dummy device for initial setup if no devices found (matches View Assist)
+    if not display_devices:
+        display_devices = {"dummy": "dummy (no View Assist devices found)"}
+    
+    # Always add none option
     display_devices["none"] = "None (use text entities only)"
     
     _LOGGER.debug("Available display devices: %s", list(display_devices.keys()))
@@ -246,23 +254,27 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors[CONF_MEDIA_PLAYER_ENTITY] = "media_player_not_found"
                 
                 # Validate display device if selected
-                if use_display_device and display_device and display_device != "none":
+                if use_display_device and display_device and display_device not in ["none", "dummy"]:
                     # Basic validation - check if device exists in View Assist or device registry
                     valid_device = False
                     
                     # Check if it's a View Assist browser ID
-                    view_assist_data = self.hass.data.get("view_assist", {})
+                    view_assist_data = hass.data.setdefault(VIEW_ASSIST_DOMAIN, {})
                     va_browser_ids = view_assist_data.get("va_browser_ids", {})
                     if display_device in va_browser_ids:
                         valid_device = True
+                        _LOGGER.debug("Found device in View Assist browser IDs: %s", display_device)
                     
-                    # Check device registry
+                    # Check device registry for Remote Assist Display devices
                     if not valid_device:
                         device_registry = dr.async_get(self.hass)
                         if display_device in [device.id for device in device_registry.devices.values()]:
                             valid_device = True
+                            _LOGGER.debug("Found device in device registry: %s", display_device)
                     
                     if not valid_device:
+                        _LOGGER.warning("Display device not found: %s. Available View Assist devices: %s", 
+                                      display_device, list(va_browser_ids.keys()))
                         errors[CONF_DISPLAY_DEVICE] = "display_device_not_found"
                 
                 if not errors:

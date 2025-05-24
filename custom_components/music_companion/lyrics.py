@@ -3,6 +3,7 @@ import datetime
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 import lrc_kit
 import time
 import re
@@ -483,56 +484,85 @@ async def update_lyrics_display(hass: HomeAssistant, previous_line: str, current
 async def send_lyrics_to_display_device(hass: HomeAssistant, display_device: str, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
     """Send lyrics to a View Assist display device."""
     try:
-        # Format lyrics for display - simple text format for View Assist
-        lyrics_text = f"""
-Previous: {previous_line}
-Current: {current_line}
-Next: {next_line}
-        """.strip()
+        _LOGGER.debug("Attempting to send lyrics to display device: %s", display_device)
         
-        # Try to send to View Assist display device
-        # View Assist typically uses browser_mod under the hood, so we try that service
-        try:
-            # Check if the display device is a View Assist device
-            view_assist_data = hass.data.get(VIEW_ASSIST_DOMAIN, {})
-            va_browser_ids = view_assist_data.get("va_browser_ids", {})
+        # Check if the display device is a View Assist device
+        view_assist_data = hass.data.setdefault(VIEW_ASSIST_DOMAIN, {})
+        va_browser_ids = view_assist_data.get("va_browser_ids", {})
+        
+        if display_device in va_browser_ids:
+            _LOGGER.debug("Sending lyrics to View Assist device: %s", display_device)
             
-            if display_device in va_browser_ids:
-                _LOGGER.debug("Sending lyrics to View Assist device: %s", display_device)
+            # Try to send via View Assist's set_state service
+            try:
+                # Find the View Assist sensor entity for this device
+                # Look for sensor entities that match this display device
+                for state in hass.states.async_all():
+                    if (state.domain == "sensor" and 
+                        state.entity_id.startswith("sensor.") and
+                        "view_assist" in state.entity_id.lower() and
+                        state.attributes.get("display_device") == display_device):
+                        
+                        await hass.services.async_call(
+                            VIEW_ASSIST_DOMAIN,
+                            "set_state",
+                            {
+                                "entity_id": state.entity_id,
+                                "lyrics_previous": previous_line,
+                                "lyrics_current": current_line,
+                                "lyrics_next": next_line,
+                                "lyrics_timestamp": datetime.datetime.now().isoformat(),
+                            }
+                        )
+                        _LOGGER.debug("Sent lyrics to View Assist via set_state service: %s", state.entity_id)
+                        return
                 
-                # View Assist devices often use browser_mod services under the hood
-                # Try to send a notification or popup to the device
+                # If no matching sensor found, try a generic approach
                 await hass.services.async_call(
-                    "browser_mod",
-                    "popup",
+                    VIEW_ASSIST_DOMAIN,
+                    "broadcast_event",
                     {
-                        "deviceID": display_device,
-                        "title": "Music Companion Lyrics",
-                        "content": f"""
-                        <div style="text-align: center; padding: 20px; font-family: Arial;">
-                            <div style="opacity: 0.6; margin-bottom: 10px;">{previous_line}</div>
-                            <div style="font-weight: bold; font-size: 1.2em; margin: 10px 0;">{current_line}</div>
-                            <div style="opacity: 0.6; margin-top: 10px;">{next_line}</div>
-                        </div>
-                        """,
-                        "size": "normal",
-                        "auto_close": False,
-                        "dismissable": True,
+                        "event_name": "music_companion_lyrics",
+                        "event_data": {
+                            "device_id": display_device,
+                            "previous_line": previous_line,
+                            "current_line": current_line,
+                            "next_line": next_line,
+                        }
                     }
                 )
-                _LOGGER.debug("Successfully sent lyrics to View Assist device via browser_mod")
+                _LOGGER.debug("Sent lyrics to View Assist via broadcast_event")
                 return
                 
-        except Exception as e:
-            _LOGGER.debug("Failed to send lyrics via browser_mod to View Assist device: %s", e)
+            except Exception as e:
+                _LOGGER.debug("Failed to send lyrics via View Assist services: %s", e)
         
-        # Fallback: Try persistent notification with device-specific ID
+        # Try sending to Remote Assist Display devices
+        try:
+            device_registry = dr.async_get(hass)
+            if display_device in [device.id for device in device_registry.devices.values()]:
+                # This might be a Remote Assist Display device
+                await hass.services.async_call(
+                    "remote_assist_display",
+                    "show_text",
+                    {
+                        "target": display_device,
+                        "text": f"♪ {current_line}\n\n↑ {previous_line}\n↓ {next_line}",
+                        "title": "Music Companion Lyrics"
+                    }
+                )
+                _LOGGER.debug("Sent lyrics to Remote Assist Display device")
+                return
+        except Exception as e:
+            _LOGGER.debug("Failed to send to Remote Assist Display: %s", e)
+        
+        # Final fallback: persistent notification with device-specific ID
         await hass.services.async_call(
             "persistent_notification",
             "create",
             {
-                "title": "Music Companion Lyrics",
-                "message": f"🎵 **{current_line}**\n\n⬆️ {previous_line}\n⬇️ {next_line}",
+                "title": "♪ Music Companion Lyrics",
+                "message": f"**{current_line}**\n\n⬆️ {previous_line}\n⬇️ {next_line}",
                 "notification_id": f"lyrics_display_{display_device}_{entry_id or 'default'}"
             }
         )
@@ -540,7 +570,7 @@ Next: {next_line}
         
     except Exception as e:
         _LOGGER.error("Failed to send lyrics to display device %s (device: %s): %s", display_device, entry_id, e)
-        # Fallback to text entities
+        # Ultimate fallback to text entities
         await update_lyrics_input_text(hass, previous_line, current_line, next_line, entry_id)
 
 
