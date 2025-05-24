@@ -35,7 +35,7 @@ SAMPLE_WIDTH = 2
 CHUNK_DURATION = 3  # Duration of each audio chunk in seconds
 MAX_TOTAL_DURATION = 12  # Maximum total recording time in seconds
 
-# Service Schema - Restored original functionality
+# Service Schema - Updated to handle optional tagging switch
 SERVICE_FETCH_AUDIO_TAG_SCHEMA = vol.Schema({
     vol.Optional("duration", default=MAX_TOTAL_DURATION): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
     vol.Optional("include_lyrics", default=True): vol.All(vol.Coerce(bool)),
@@ -91,7 +91,8 @@ def get_tagging_config(hass: HomeAssistant, entry_id=None):
         "port": master_config.get("home_assistant_udp_port", 6056),
         "access_key": master_config.get("acrcloud_access_key"),
         "access_secret": master_config.get("acrcloud_access_secret"),
-        "media_player": device_config.get("media_player_entity") if device_config else None
+        "media_player": device_config.get("media_player_entity") if device_config else None,
+        "tagging_enabled": device_config.get("tagging_enabled", False) if device_config else False
     }
     
     return combined_config
@@ -113,6 +114,14 @@ def find_device_config_by_switch(hass: HomeAssistant, tagging_switch_entity_id):
             return entry_id, device_config
     return None, None
 
+def find_device_config_by_assist_satellite(hass: HomeAssistant, assist_satellite_entity):
+    """Find device configuration that matches the assist satellite."""
+    device_configs = get_device_configs(hass)
+    for entry_id, device_config in device_configs:
+        if device_config.get("assist_satellite_entity") == assist_satellite_entity:
+            return entry_id, device_config
+    return None, None
+
 def clean_text(text):
     """Remove Chinese characters from the given text."""
     return re.sub(r'[\u4e00-\u9fff]+', '', text).strip()
@@ -129,10 +138,11 @@ class TaggingService:
         self.hass = hass
         self.entry_id = entry_id
         
-        # Validate the switch entity ID exists in Home Assistant
-        if not tagging_switch_entity_id or not hass.states.get(tagging_switch_entity_id):
-            _LOGGER.error(f"Invalid tagging switch entity ID provided: {tagging_switch_entity_id}")
-            raise ValueError(f"The provided switch entity ID '{tagging_switch_entity_id}' does not exist or is invalid")
+        # Validate the switch entity ID exists in Home Assistant (only if provided)
+        if tagging_switch_entity_id:
+            if not hass.states.get(tagging_switch_entity_id):
+                _LOGGER.error(f"Invalid tagging switch entity ID provided: {tagging_switch_entity_id}")
+                raise ValueError(f"The provided switch entity ID '{tagging_switch_entity_id}' does not exist or is invalid")
             
         self.tagging_switch_entity_id = tagging_switch_entity_id
 
@@ -148,6 +158,10 @@ class TaggingService:
 
         if not all(key in conf for key in ["host", "access_key", "access_secret"]):
             raise ValueError("Missing required ACRCloud configuration in master settings.")
+
+        # Check if tagging is enabled for this device
+        if not conf.get("tagging_enabled", False):
+            raise ValueError("Audio tagging is not enabled for this device. This device supports lyrics display only.")
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse
@@ -343,33 +357,34 @@ class TaggingService:
             _LOGGER.info("Waiting for incoming UDP audio data...")
             await update_lyrics_input_text(self.hass, "Listening......", "", "")
             
-            # Check if the switch entity exists before using it
-            if not self.hass.states.get(self.tagging_switch_entity_id):
-                error_msg = f"Tagging switch entity '{self.tagging_switch_entity_id}' not found"
-                _LOGGER.error(error_msg)
-                await self.hass.services.async_call(
-                    "persistent_notification",
-                    "create",
-                    {
-                        "title": "Audio Tagging Error",
-                        "message": error_msg,
-                        "notification_id": "tagging_error"
-                    }
-                )
-                return
-            
-            # Turn on the tagging switch
-            try:
-                await self.hass.services.async_call(
-                    "switch", 
-                    "turn_on", 
-                    {"entity_id": self.tagging_switch_entity_id}
-                )
-                _LOGGER.info(f"Turned ON tagging switch: {self.tagging_switch_entity_id}")
-            except Exception as e:
-                _LOGGER.error(f"Failed to turn on tagging switch: {e}")
-                await update_lyrics_input_text(self.hass, "", "", "")
-                return
+            # Turn on the tagging switch (only if it exists)
+            if self.tagging_switch_entity_id:
+                # Check if the switch entity exists before using it
+                if not self.hass.states.get(self.tagging_switch_entity_id):
+                    error_msg = f"Tagging switch entity '{self.tagging_switch_entity_id}' not found"
+                    _LOGGER.error(error_msg)
+                    await self.hass.services.async_call(
+                        "persistent_notification",
+                        "create",
+                        {
+                            "title": "Audio Tagging Error",
+                            "message": error_msg,
+                            "notification_id": "tagging_error"
+                        }
+                    )
+                    return
+                
+                try:
+                    await self.hass.services.async_call(
+                        "switch", 
+                        "turn_on", 
+                        {"entity_id": self.tagging_switch_entity_id}
+                    )
+                    _LOGGER.info(f"Turned ON tagging switch: {self.tagging_switch_entity_id}")
+                except Exception as e:
+                    _LOGGER.error(f"Failed to turn on tagging switch: {e}")
+                    await update_lyrics_input_text(self.hass, "", "", "")
+                    return
             
             total_chunks = max_duration // CHUNK_DURATION
             all_audio_data = []
@@ -394,16 +409,17 @@ class TaggingService:
                 else:
                     _LOGGER.info(f"No match in chunk {i+1}, continuing...")
             
-            # Turn off the tagging switch
-            try:
-                await self.hass.services.async_call(
-                    "switch", 
-                    "turn_off", 
-                    {"entity_id": self.tagging_switch_entity_id}
-                )
-                _LOGGER.info(f"Turned OFF tagging switch: {self.tagging_switch_entity_id}")
-            except Exception as e:
-                _LOGGER.error(f"Failed to turn off tagging switch: {e}")
+            # Turn off the tagging switch (only if it exists)
+            if self.tagging_switch_entity_id:
+                try:
+                    await self.hass.services.async_call(
+                        "switch", 
+                        "turn_off", 
+                        {"entity_id": self.tagging_switch_entity_id}
+                    )
+                    _LOGGER.info(f"Turned OFF tagging switch: {self.tagging_switch_entity_id}")
+                except Exception as e:
+                    _LOGGER.error(f"Failed to turn off tagging switch: {e}")
             
             # Handle results
             if success:
@@ -427,15 +443,16 @@ class TaggingService:
 
         except Exception as e:
             _LOGGER.error("Error in Tagging Service: %s", e)
-            # Ensure switch is turned off in case of an error
-            try:
-                await self.hass.services.async_call(
-                    "switch", 
-                    "turn_off", 
-                    {"entity_id": self.tagging_switch_entity_id}
-                )
-            except Exception as switch_e:
-                _LOGGER.error(f"Failed to turn off tagging switch during error handling: {switch_e}")
+            # Ensure switch is turned off in case of an error (only if it exists)
+            if self.tagging_switch_entity_id:
+                try:
+                    await self.hass.services.async_call(
+                        "switch", 
+                        "turn_off", 
+                        {"entity_id": self.tagging_switch_entity_id}
+                    )
+                except Exception as switch_e:
+                    _LOGGER.error(f"Failed to turn off tagging switch during error handling: {switch_e}")
             
             # Fire error event
             self.hass.bus.async_fire("music_companion_tag_result", {
@@ -466,7 +483,7 @@ class TaggingService:
 
 
 async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
-    """Handle the service call for fetching audio tags - restored original functionality."""
+    """Handle the service call for fetching audio tags - updated to handle optional tagging."""
     try:
         duration = call.data.get("duration", MAX_TOTAL_DURATION)
         include_lyrics = call.data.get("include_lyrics", True)
@@ -488,36 +505,44 @@ async def handle_fetch_audio_tag(hass: HomeAssistant, call: ServiceCall):
                 _LOGGER.info("Found matching device config: %s", device_config.get("device_name"))
             
         elif assist_satellite_entity:
-            # Alternative method - infer switch from assist satellite
-            tagging_switch_entity_id = infer_tagging_switch_from_assist_satellite(assist_satellite_entity)
-            if not tagging_switch_entity_id:
-                error_msg = f"Could not infer tagging switch from assist satellite: {assist_satellite_entity}"
+            # Alternative method - find device by assist satellite
+            entry_id, device_config = find_device_config_by_assist_satellite(hass, assist_satellite_entity)
+            if device_config:
+                if device_config.get("tagging_enabled", False):
+                    tagging_switch_entity_id = device_config.get("tagging_switch_entity")
+                    _LOGGER.info("Found device config with tagging enabled: %s, switch: %s", 
+                               device_config.get("device_name"), tagging_switch_entity_id)
+                else:
+                    error_msg = f"Device '{device_config.get('device_name')}' does not support audio tagging (lyrics display only)"
+                    _LOGGER.error(error_msg)
+                    await create_error_notification(hass, error_msg)
+                    return
+            else:
+                error_msg = f"No Music Companion device found for assist satellite: {assist_satellite_entity}"
                 _LOGGER.error(error_msg)
                 await create_error_notification(hass, error_msg)
                 return
-            _LOGGER.info("Inferred tagging switch from assist satellite: %s -> %s", assist_satellite_entity, tagging_switch_entity_id)
-            
-            # Try to find matching device config
-            entry_id, device_config = find_device_config_by_switch(hass, tagging_switch_entity_id)
             
         else:
-            # Auto-detect: use first available device config
+            # Auto-detect: use first available device config with tagging enabled
             device_configs = get_device_configs(hass)
-            if device_configs:
-                entry_id = device_configs[0][0]
-                device_config = device_configs[0][1]
+            tagging_enabled_devices = [(eid, config) for eid, config in device_configs if config.get("tagging_enabled", False)]
+            
+            if tagging_enabled_devices:
+                entry_id = tagging_enabled_devices[0][0]
+                device_config = tagging_enabled_devices[0][1]
                 tagging_switch_entity_id = device_config.get("tagging_switch_entity")
                 auto_device_name = device_config.get("device_name", "Unknown Device")
-                _LOGGER.info("Auto-selected device: %s, switch: %s", auto_device_name, tagging_switch_entity_id)
+                _LOGGER.info("Auto-selected device with tagging: %s, switch: %s", auto_device_name, tagging_switch_entity_id)
             else:
-                error_msg = "No tagging switch specified and no device configurations found."
+                error_msg = "No tagging switch specified and no devices with tagging capability found."
                 _LOGGER.error(error_msg)
                 await create_error_notification(hass, error_msg)
                 return
         
-        # Validate the switch entity exists
-        if not hass.states.get(tagging_switch_entity_id):
-            error_msg = f"Tagging switch entity '{tagging_switch_entity_id}' not found"
+        # Final validation - ensure we have a tagging switch for devices that support tagging
+        if not tagging_switch_entity_id:
+            error_msg = "No tagging switch found for audio tagging operation"
             _LOGGER.error(error_msg)
             await create_error_notification(hass, error_msg)
             return

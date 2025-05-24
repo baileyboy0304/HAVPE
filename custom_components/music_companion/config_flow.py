@@ -168,10 +168,12 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not assist_satellite.startswith("assist_satellite."):
                     errors[CONF_ASSIST_SATELLITE_ENTITY] = "invalid_assist_satellite"
                 else:
-                    # Infer tagging switch from assist satellite
+                    # Try to infer tagging switch from assist satellite
                     tagging_switch, error = infer_tagging_switch_from_assist_satellite(self.hass, assist_satellite)
-                    if error:
-                        errors[CONF_ASSIST_SATELLITE_ENTITY] = "tagging_switch_not_found"
+                    tagging_enabled = tagging_switch is not None
+                    
+                    if error and not tagging_enabled:
+                        _LOGGER.info("Device '%s' will be configured without tagging capability: %s", device_name, error)
                 
                 # Validate media player entity
                 if not self.hass.states.get(media_player):
@@ -186,12 +188,20 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "assist_satellite_entity": assist_satellite,
                         "media_player_entity": media_player,
                         "base_name": base_name,
-                        "tagging_switch_entity": tagging_switch,
+                        "tagging_enabled": tagging_enabled,
                         "entry_type": ENTRY_TYPE_DEVICE,
                     }
                     
+                    # Only add tagging switch if it exists
+                    if tagging_enabled and tagging_switch:
+                        data["tagging_switch_entity"] = tagging_switch
+                    
                     # Log the device creation for debugging
-                    _LOGGER.info("Creating device entry: %s with tagging switch: %s", device_name, tagging_switch)
+                    _LOGGER.info("Creating device entry: %s with tagging enabled: %s", device_name, tagging_enabled)
+                    if tagging_enabled:
+                        _LOGGER.info("Tagging switch: %s", tagging_switch)
+                    else:
+                        _LOGGER.info("Device will support lyrics display only (no audio tagging)")
                     
                     return self.async_create_entry(title=device_name, data=data)
 

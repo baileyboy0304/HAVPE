@@ -16,6 +16,8 @@ CONF_SPOTIFY_PLAYLIST_NAME = "spotify_playlist_name"
 CONF_DEVICE_NAME = "device_name"
 CONF_ASSIST_SATELLITE_ENTITY = "assist_satellite_entity"
 CONF_MEDIA_PLAYER_ENTITY = "media_player_entity"
+CONF_TAGGING_ENABLED = "tagging_enabled"
+CONF_TAGGING_SWITCH_ENTITY = "tagging_switch_entity"
 
 # Entry Types
 ENTRY_TYPE_MASTER = "master"
@@ -37,3 +39,7 @@ DEFAULT_SPOTIFY_PLAYLIST_NAME = "Home Assistant Music Discoveries"
 DEVICE_DATA_LYRICS_SYNC = "lyrics_sync"
 DEVICE_DATA_LAST_MEDIA_CONTENT_ID = "last_media_content_id"
 DEVICE_DATA_LYRICS_ENTITIES = "lyrics_entities"
+
+# Device capability constants
+CAPABILITY_LYRICS_DISPLAY = "lyrics_display"
+CAPABILITY_AUDIO_TAGGING = "audio_tagging"
