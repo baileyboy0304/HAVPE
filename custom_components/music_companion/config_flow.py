@@ -64,7 +64,7 @@ def get_display_device_options(hass: HomeAssistant):
     """Get available View Assist display devices for selection."""
     display_devices = {}
     
-    # Look for View Assist display devices (similar to how View Assist does it)
+    # Look for View Assist display devices
     try:
         # Check View Assist domain data for browser IDs
         view_assist_data = hass.data.get(VIEW_ASSIST_DOMAIN, {})
@@ -104,40 +104,6 @@ def get_display_device_options(hass: HomeAssistant):
     
     _LOGGER.debug("Available display devices: %s", list(display_devices.keys()))
     return display_devices
-        _LOGGER.debug("Found %d Browser Mod devices from device registry", len(browser_mod_devices))
-        for device in browser_mod_devices:
-            display_devices[device.id] = f"Browser Mod Device: {device.name or device.id}"
-    except Exception as e:
-        _LOGGER.debug("Error getting Browser Mod devices from registry: %s", e)
-    
-    # Add Remote Assist Display devices
-    try:
-        remote_display_devices = get_devices_for_domain(hass, REMOTE_ASSIST_DISPLAY_DOMAIN)
-        _LOGGER.debug("Found %d Remote Assist Display devices", len(remote_display_devices))
-        for device in remote_display_devices:
-            display_devices[device.id] = f"Remote Display: {device.name or device.id}"
-    except Exception as e:
-        _LOGGER.debug("Error getting Remote Assist Display devices: %s", e)
-    
-    # Add browser_mod browsers from hass.data (this is the main way browser_mod works)
-    try:
-        # Check if browser_mod is loaded
-        if BROWSERMOD_DOMAIN in hass.data:
-            browser_mod_data = hass.data[BROWSERMOD_DOMAIN]
-            _LOGGER.debug("Browser Mod data keys: %s", list(browser_mod_data.keys()))
-            
-            # Try different possible keys for browsers
-            browsers = None
-            for key in ["browsers", "browser_ids", "devices"]:
-                if key in browser_mod_data:
-                    browsers = browser_mod_data[key]
-                    _LOGGER.debug("Found browsers under key '%s': %s", key, list(browsers.keys()) if isinstance(browsers, dict) else browsers)
-                    break
-            
-            if browsers and isinstance(browsers, dict):
-                for browser_id, browser_info in browsers.items():
-                    if browser_id not in display_devices:
-                        if
 
 class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
