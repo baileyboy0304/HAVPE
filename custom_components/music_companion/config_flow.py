@@ -9,6 +9,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from .const import (
     DOMAIN, 
     CONF_ACRCLOUD_HOST,
@@ -27,7 +28,7 @@ from .const import (
     CONF_USE_DISPLAY_DEVICE,
     ENTRY_TYPE_MASTER,
     ENTRY_TYPE_DEVICE,
-    BROWSERMOD_DOMAIN,
+    VIEW_ASSIST_DOMAIN,
     REMOTE_ASSIST_DISPLAY_DOMAIN,
     DEFAULT_SPOTIFY_PLAYLIST_NAME
 )
@@ -60,41 +61,83 @@ def get_devices_for_domain(hass: HomeAssistant, domain: str):
     ]
 
 def get_display_device_options(hass: HomeAssistant):
-    """Get available display devices for selection."""
+    """Get available View Assist display devices for selection."""
     display_devices = {}
     
-    # Add Browser Mod devices
+    # Look for View Assist display devices (similar to how View Assist does it)
     try:
-        browser_mod_devices = get_devices_for_domain(hass, BROWSERMOD_DOMAIN)
-        for device in browser_mod_devices:
-            display_devices[device.id] = f"Browser Mod: {device.name or device.id}"
+        # Check View Assist domain data for browser IDs
+        view_assist_data = hass.data.get(VIEW_ASSIST_DOMAIN, {})
+        va_browser_ids = view_assist_data.get("va_browser_ids", {})
+        
+        _LOGGER.debug("View Assist browser IDs found: %s", list(va_browser_ids.keys()))
+        
+        for device_id, device_name in va_browser_ids.items():
+            display_devices[device_id] = f"View Assist: {device_name}"
+            
     except Exception as e:
-        _LOGGER.debug("Error getting Browser Mod devices: %s", e)
+        _LOGGER.debug("Error getting View Assist browser IDs: %s", e)
     
     # Add Remote Assist Display devices
     try:
         remote_display_devices = get_devices_for_domain(hass, REMOTE_ASSIST_DISPLAY_DOMAIN)
+        _LOGGER.debug("Found %d Remote Assist Display devices", len(remote_display_devices))
         for device in remote_display_devices:
             display_devices[device.id] = f"Remote Display: {device.name or device.id}"
     except Exception as e:
         _LOGGER.debug("Error getting Remote Assist Display devices: %s", e)
     
-    # Add browser_mod service-based displays from hass data if available
+    # Check for View Assist entities to find display devices
     try:
-        hass_data = hass.data.get(BROWSERMOD_DOMAIN, {})
-        browser_ids = hass_data.get("browsers", {})
-        for browser_id, browser_info in browser_ids.items():
-            if browser_id not in display_devices:
-                browser_name = browser_info.get("name", browser_id)
-                display_devices[browser_id] = f"Browser: {browser_name}"
+        entity_registry = er.async_get(hass)
+        for entity in entity_registry.entities.values():
+            if entity.platform == VIEW_ASSIST_DOMAIN and entity.device_id:
+                device_registry = dr.async_get(hass)
+                device = device_registry.async_get(entity.device_id)
+                if device and device.id not in display_devices:
+                    display_devices[device.id] = f"View Assist Device: {device.name or entity.device_id}"
     except Exception as e:
-        _LOGGER.debug("Error getting browser mod browsers: %s", e)
+        _LOGGER.debug("Error checking View Assist entities: %s", e)
     
-    # If no devices found, add a placeholder
-    if not display_devices:
-        display_devices["none"] = "No display devices available"
+    # Always add none option as default
+    display_devices["none"] = "None (use text entities only)"
     
+    _LOGGER.debug("Available display devices: %s", list(display_devices.keys()))
     return display_devices
+        _LOGGER.debug("Found %d Browser Mod devices from device registry", len(browser_mod_devices))
+        for device in browser_mod_devices:
+            display_devices[device.id] = f"Browser Mod Device: {device.name or device.id}"
+    except Exception as e:
+        _LOGGER.debug("Error getting Browser Mod devices from registry: %s", e)
+    
+    # Add Remote Assist Display devices
+    try:
+        remote_display_devices = get_devices_for_domain(hass, REMOTE_ASSIST_DISPLAY_DOMAIN)
+        _LOGGER.debug("Found %d Remote Assist Display devices", len(remote_display_devices))
+        for device in remote_display_devices:
+            display_devices[device.id] = f"Remote Display: {device.name or device.id}"
+    except Exception as e:
+        _LOGGER.debug("Error getting Remote Assist Display devices: %s", e)
+    
+    # Add browser_mod browsers from hass.data (this is the main way browser_mod works)
+    try:
+        # Check if browser_mod is loaded
+        if BROWSERMOD_DOMAIN in hass.data:
+            browser_mod_data = hass.data[BROWSERMOD_DOMAIN]
+            _LOGGER.debug("Browser Mod data keys: %s", list(browser_mod_data.keys()))
+            
+            # Try different possible keys for browsers
+            browsers = None
+            for key in ["browsers", "browser_ids", "devices"]:
+                if key in browser_mod_data:
+                    browsers = browser_mod_data[key]
+                    _LOGGER.debug("Found browsers under key '%s': %s", key, list(browsers.keys()) if isinstance(browsers, dict) else browsers)
+                    break
+            
+            if browsers and isinstance(browsers, dict):
+                for browser_id, browser_info in browsers.items():
+                    if browser_id not in display_devices:
+                        if
 
 class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -238,14 +281,23 @@ class MusicCompanionConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 # Validate display device if selected
                 if use_display_device and display_device and display_device != "none":
-                    # Basic validation - check if device exists
-                    device_registry = dr.async_get(self.hass)
-                    if display_device not in [device.id for device in device_registry.devices.values()]:
-                        # Check if it's a browser_mod browser ID
-                        browser_mod_data = self.hass.data.get(BROWSERMOD_DOMAIN, {})
-                        browsers = browser_mod_data.get("browsers", {})
-                        if display_device not in browsers:
-                            errors[CONF_DISPLAY_DEVICE] = "display_device_not_found"
+                    # Basic validation - check if device exists in View Assist or device registry
+                    valid_device = False
+                    
+                    # Check if it's a View Assist browser ID
+                    view_assist_data = self.hass.data.get("view_assist", {})
+                    va_browser_ids = view_assist_data.get("va_browser_ids", {})
+                    if display_device in va_browser_ids:
+                        valid_device = True
+                    
+                    # Check device registry
+                    if not valid_device:
+                        device_registry = dr.async_get(self.hass)
+                        if display_device in [device.id for device in device_registry.devices.values()]:
+                            valid_device = True
+                    
+                    if not valid_device:
+                        errors[CONF_DISPLAY_DEVICE] = "display_device_not_found"
                 
                 if not errors:
                     # Extract base name for storage

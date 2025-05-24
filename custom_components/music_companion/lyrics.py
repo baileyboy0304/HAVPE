@@ -18,7 +18,7 @@ from .const import (
     DEVICE_LYRICS_LINE3_TEMPLATE,
     CONF_DISPLAY_DEVICE,
     CONF_USE_DISPLAY_DEVICE,
-    BROWSERMOD_DOMAIN
+    VIEW_ASSIST_DOMAIN
 )
 from homeassistant.helpers.event import async_track_state_change_event
 from .media_tracker import MediaTracker
@@ -481,80 +481,62 @@ async def update_lyrics_display(hass: HomeAssistant, previous_line: str, current
 
 
 async def send_lyrics_to_display_device(hass: HomeAssistant, display_device: str, previous_line: str, current_line: str, next_line: str, entry_id: str = None):
-    """Send lyrics to a display device using browser_mod or other display service."""
+    """Send lyrics to a View Assist display device."""
     try:
-        # Format lyrics for display
-        lyrics_html = f"""
-        <div style="
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        ">
-            <div style="margin-bottom: 10px; opacity: 0.6; font-size: 18px;">
-                {previous_line}
-            </div>
-            <div style="font-size: 24px; font-weight: bold; margin: 10px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
-                {current_line}
-            </div>
-            <div style="margin-top: 10px; opacity: 0.6; font-size: 18px;">
-                {next_line}
-            </div>
-        </div>
-        """
+        # Format lyrics for display - simple text format for View Assist
+        lyrics_text = f"""
+Previous: {previous_line}
+Current: {current_line}
+Next: {next_line}
+        """.strip()
         
-        # Try browser_mod first
-        if BROWSERMOD_DOMAIN in hass.data:
-            try:
+        # Try to send to View Assist display device
+        # View Assist typically uses browser_mod under the hood, so we try that service
+        try:
+            # Check if the display device is a View Assist device
+            view_assist_data = hass.data.get(VIEW_ASSIST_DOMAIN, {})
+            va_browser_ids = view_assist_data.get("va_browser_ids", {})
+            
+            if display_device in va_browser_ids:
+                _LOGGER.debug("Sending lyrics to View Assist device: %s", display_device)
+                
+                # View Assist devices often use browser_mod services under the hood
+                # Try to send a notification or popup to the device
                 await hass.services.async_call(
-                    BROWSERMOD_DOMAIN,
+                    "browser_mod",
                     "popup",
                     {
                         "deviceID": display_device,
                         "title": "Music Companion Lyrics",
-                        "content": lyrics_html,
-                        "size": "fullscreen",
+                        "content": f"""
+                        <div style="text-align: center; padding: 20px; font-family: Arial;">
+                            <div style="opacity: 0.6; margin-bottom: 10px;">{previous_line}</div>
+                            <div style="font-weight: bold; font-size: 1.2em; margin: 10px 0;">{current_line}</div>
+                            <div style="opacity: 0.6; margin-top: 10px;">{next_line}</div>
+                        </div>
+                        """,
+                        "size": "normal",
                         "auto_close": False,
                         "dismissable": True,
                     }
                 )
-                _LOGGER.debug("Sent lyrics to browser_mod display device: %s (device: %s)", display_device, entry_id)
+                _LOGGER.debug("Successfully sent lyrics to View Assist device via browser_mod")
                 return
-            except Exception as e:
-                _LOGGER.debug("Failed to send lyrics via browser_mod popup: %s", e)
                 
-                # Try alternative browser_mod approach
-                try:
-                    await hass.services.async_call(
-                        BROWSERMOD_DOMAIN,
-                        "navigate",
-                        {
-                            "deviceID": display_device,
-                            "path": f"/lovelace/music-companion-lyrics?html={lyrics_html}",
-                        }
-                    )
-                    _LOGGER.debug("Sent lyrics to browser_mod via navigate: %s (device: %s)", display_device, entry_id)
-                    return
-                except Exception as e2:
-                    _LOGGER.debug("Failed to send lyrics via browser_mod navigate: %s", e2)
+        except Exception as e:
+            _LOGGER.debug("Failed to send lyrics via browser_mod to View Assist device: %s", e)
         
-        # Try persistent notification as fallback for display devices
+        # Fallback: Try persistent notification with device-specific ID
         await hass.services.async_call(
             "persistent_notification",
             "create",
             {
                 "title": "Music Companion Lyrics",
-                "message": f"**{current_line}**\n\n↑ {previous_line}\n↓ {next_line}",
-                "notification_id": f"lyrics_display_{entry_id or 'default'}"
+                "message": f"🎵 **{current_line}**\n\n⬆️ {previous_line}\n⬇️ {next_line}",
+                "notification_id": f"lyrics_display_{display_device}_{entry_id or 'default'}"
             }
         )
-        _LOGGER.debug("Sent lyrics via persistent notification for display device: %s (device: %s)", display_device, entry_id)
+        _LOGGER.debug("Sent lyrics via persistent notification for display device: %s", display_device)
         
     except Exception as e:
         _LOGGER.error("Failed to send lyrics to display device %s (device: %s): %s", display_device, entry_id, e)
